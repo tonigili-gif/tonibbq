@@ -111,7 +111,7 @@ function loadState() {
             nextState.clientId = createId();
         }
         return nextState;
-    } catch {
+    } catch (error) {
         return cloneInitialState();
     }
 }
@@ -127,7 +127,7 @@ window.addEventListener("storage", (event) => {
         Object.assign(state, nextState);
         hydrateInputs();
         render();
-    } catch {
+    } catch (error) {
         // Ignore malformed external state.
     }
 });
@@ -683,8 +683,8 @@ function normalizeGroupCode(value) {
     return String(value)
         .trim()
         .toUpperCase()
-        .replaceAll(/\s+/g, "-")
-        .replaceAll(/[^A-Z0-9_-]/g, "");
+        .replace(/\s+/g, "-")
+        .replace(/[^A-Z0-9_-]/g, "");
 }
 
 function createId() {
@@ -736,9 +736,9 @@ function getUpcomingSaturday() {
 
 function escapeHtml(value) {
     return String(value)
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#39;");
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
 }
