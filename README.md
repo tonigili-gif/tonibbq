@@ -43,6 +43,8 @@ window.TONIBBQ_CONFIG = {
 - El plan, los amigos, los items y el chat viven en columnas JSON.
 - La app se suscribe a cambios realtime del grupo activo.
 - Cuando un amigo cambia compras o manda un mensaje, el resto lo ve al momento.
+- Incluye onboarding guiado, resumen ejecutivo, filtros de compra, marcado de compras y modo instalable.
+- Registra un `service-worker` para cargar el shell de la app mas rapido y sentirse mas nativa.
 
 ## Nota de seguridad
 
@@ -56,3 +58,4 @@ Cuando quieras endurecerla de verdad:
 - invitaciones por grupo
 - policies por miembro del grupo
 - notificaciones push
+- separar grupos, items y mensajes en tablas dedicadas

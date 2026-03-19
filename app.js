@@ -1,4 +1,5 @@
-const STORAGE_KEY = "tonibbq-state-v3";
+const STORAGE_KEY = "tonibbq-state-v4";
+const TOAST_DURATION_MS = 3200;
 
 const defaultItems = [
     { name: "Carbon", quantity: "", ownerId: "" },
@@ -25,18 +26,16 @@ const initialState = {
     currentFriendId: "",
     clientId: createId(),
     lastSyncedAt: "",
-    plan: {
-        date: "",
-        adults: "",
-        children: "",
-        bbqReserved: "",
-        tablesReserved: "",
-        notes: "",
-        updatedAt: ""
-    },
+    plan: blankPlan(),
     friends: [],
     items: [],
     messages: []
+};
+
+const uiState = {
+    itemFilter: "all",
+    editingItemId: "",
+    deferredInstallPrompt: null
 };
 
 const SUPABASE_CONFIG = window.TONIBBQ_CONFIG || {};
@@ -85,21 +84,61 @@ const elements = {
     chatThread: document.getElementById("chatThread"),
     chatMessage: document.getElementById("chatMessage"),
     sendMessageButton: document.getElementById("sendMessageButton"),
-    messagesCounter: document.getElementById("messagesCounter")
+    messagesCounter: document.getElementById("messagesCounter"),
+    setupGuide: document.getElementById("setupGuide"),
+    overviewGrid: document.getElementById("overviewGrid"),
+    overviewNote: document.getElementById("overviewNote"),
+    shoppingFilters: document.getElementById("shoppingFilters"),
+    installAppButton: document.getElementById("installAppButton"),
+    toastStack: document.getElementById("toastStack"),
+    liveRegion: document.getElementById("liveRegion")
 };
 
 hydrateInputs();
 bindEvents();
 render();
-initializeSync();
+initializeApp();
 
 function bindEvents() {
-    elements.joinGroupButton.addEventListener("click", joinGroup);
-    elements.createDemoButton.addEventListener("click", createDemoGroup);
-    elements.savePlanButton.addEventListener("click", savePlan);
-    elements.addItemButton.addEventListener("click", addItem);
-    elements.seedItemsButton.addEventListener("click", seedItems);
-    elements.sendMessageButton.addEventListener("click", sendMessage);
+    elements.joinGroupButton.addEventListener("click", () => {
+        withButtonState(elements.joinGroupButton, "Entrando...", joinGroup);
+    });
+
+    elements.createDemoButton.addEventListener("click", () => {
+        withButtonState(elements.createDemoButton, "Preparando demo...", createDemoGroup);
+    });
+
+    elements.savePlanButton.addEventListener("click", () => {
+        withButtonState(elements.savePlanButton, "Guardando plan...", savePlan);
+    });
+
+    elements.addItemButton.addEventListener("click", () => {
+        withButtonState(elements.addItemButton, "Anadiendo...", addItem);
+    });
+
+    elements.seedItemsButton.addEventListener("click", () => {
+        withButtonState(elements.seedItemsButton, "Cargando pack...", seedItems);
+    });
+
+    elements.sendMessageButton.addEventListener("click", () => {
+        withButtonState(elements.sendMessageButton, "Enviando...", sendMessage);
+    });
+
+    elements.shoppingFilters.querySelectorAll("[data-filter]").forEach((button) => {
+        button.addEventListener("click", () => {
+            uiState.itemFilter = button.getAttribute("data-filter") || "all";
+            renderItems();
+        });
+    });
+
+    elements.chatMessage.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" && !event.shiftKey) {
+            event.preventDefault();
+            elements.sendMessageButton.click();
+        }
+    });
+
+    elements.installAppButton.addEventListener("click", installPwa);
 }
 
 function loadState() {
@@ -107,11 +146,7 @@ function loadState() {
         const raw = localStorage.getItem(STORAGE_KEY);
         if (!raw) return cloneInitialState();
         const parsed = JSON.parse(raw);
-        const nextState = { ...cloneInitialState(), ...parsed };
-        if (!nextState.clientId) {
-            nextState.clientId = createId();
-        }
-        return nextState;
+        return normalizeClientState({ ...cloneInitialState(), ...parsed });
     } catch (error) {
         return cloneInitialState();
     }
@@ -124,7 +159,7 @@ function persist() {
 window.addEventListener("storage", (event) => {
     if (event.key !== STORAGE_KEY || !event.newValue) return;
     try {
-        const nextState = { ...cloneInitialState(), ...JSON.parse(event.newValue) };
+        const nextState = normalizeClientState({ ...cloneInitialState(), ...JSON.parse(event.newValue) });
         Object.assign(state, nextState);
         hydrateInputs();
         render();
@@ -145,16 +180,14 @@ function hydrateInputs() {
     elements.friendName.value = currentFriend ? currentFriend.name : "";
 }
 
-async function initializeSync() {
-    if (!hasSupabaseConfig) {
-        updateSyncBadge("Configura Supabase para compartir la app", "is-offline");
-        return;
-    }
+async function initializeApp() {
+    setupInstallPrompt();
+    registerServiceWorker();
 
-    if ("Notification" in window && Notification.permission === "default") {
-        Notification.requestPermission().catch(() => {
-            // Ignore permission prompt errors.
-        });
+    if (!hasSupabaseConfig) {
+        updateSyncBadge("Modo demo local. Configura Supabase para compartir.", "is-offline");
+        showToast("Modo local", "La interfaz funciona, pero falta conectar Supabase para compartirla.", "error");
+        return;
     }
 
     updateSyncBadge("Supabase conectado", "");
@@ -170,25 +203,32 @@ async function joinGroup() {
     const groupCode = normalizeGroupCode(elements.groupCode.value);
 
     if (!name || !groupCode) {
-        window.alert("Escribe tu nombre y un codigo de grupo.");
+        showToast("Faltan datos", "Escribe tu nombre y un codigo de grupo.", "error");
+        announce("Faltan datos para unirse al grupo.");
         return;
     }
 
     state.groupCode = groupCode;
     await loadRemoteGroup(groupCode);
 
-    const existingFriend = findFriendByName(name);
-    const friend = existingFriend || createFriend(name);
-
-    if (!existingFriend) {
-        state.friends.push(friend);
+    let friend = state.friends.find((entry) => entry.deviceId === state.clientId);
+    if (!friend) {
+        friend = findFriendByName(name) || createFriend(name);
+        if (!state.friends.find((entry) => entry.id === friend.id)) {
+            state.friends.push(friend);
+        }
     }
 
+    friend.name = name;
+    friend.deviceId = state.clientId;
+    friend.updatedAt = nowIso();
+
     state.currentFriendId = friend.id;
-    touchFriend(friend.id);
     persistAndRender();
     await syncGroup("joined the group");
     subscribeToGroup(groupCode);
+    maybeRequestNotificationPermission();
+    showToast("Grupo listo", `Ya estas dentro de ${groupCode}.`, "success");
 }
 
 async function createDemoGroup() {
@@ -199,8 +239,9 @@ async function createDemoGroup() {
         createFriend("Javi"),
         createFriend("Marta")
     ];
+    state.friends[0].deviceId = state.clientId;
     state.currentFriendId = state.friends[0].id;
-    state.plan = {
+    state.plan = normalizePlan({
         date: getUpcomingSaturday(),
         adults: "10",
         children: "4",
@@ -208,24 +249,31 @@ async function createDemoGroup() {
         tablesReserved: "Mesa 6 y 7",
         notes: "Quedar a las 13:00. Llevar hielos extra y pinzas.",
         updatedAt: nowIso()
-    };
-    state.items = defaultItems.map((item, index) => ({
+    });
+    state.items = defaultItems.map((item, index) => normalizeItem({
         id: createId(),
         name: item.name,
         quantity: item.quantity,
         ownerId: state.friends[index % state.friends.length].id,
         updatedAt: nowIso(),
+        completedAt: "",
         deletedAt: ""
     }));
     state.messages = [];
-
     persistAndRender();
     await syncGroup("created the demo group");
     subscribeToGroup(state.groupCode);
+    maybeRequestNotificationPermission();
+    showToast("Demo lista", "Hemos cargado una BBQ de ejemplo para que pruebes la app.", "success");
 }
 
 async function savePlan() {
-    state.plan = {
+    if (!hasGroup()) {
+        showToast("Necesitas un grupo", "Unete primero a un grupo para guardar el plan.", "error");
+        return;
+    }
+
+    state.plan = normalizePlan({
         date: elements.bbqDate.value,
         adults: elements.adultsCount.value,
         children: elements.childrenCount.value,
@@ -233,64 +281,174 @@ async function savePlan() {
         tablesReserved: elements.tablesReserved.value.trim(),
         notes: elements.planNotes.value.trim(),
         updatedAt: nowIso()
-    };
+    });
     persistAndRender();
     await syncGroup("updated the plan");
+    showToast("Plan guardado", "La fecha y la reserva de la BBQ han quedado actualizadas.", "success");
 }
 
 async function addItem() {
+    if (!hasGroup()) {
+        showToast("Sin grupo activo", "Unete a un grupo antes de anadir compras.", "error");
+        return;
+    }
+
     const name = elements.newItemName.value.trim();
     const quantity = elements.newItemQty.value.trim();
     const ownerId = elements.newItemOwner.value;
 
     if (!name) {
-        window.alert("Anade al menos el nombre del item.");
+        showToast("Falta el item", "Anade al menos el nombre de la compra.", "error");
         return;
     }
 
-    state.items.unshift({
+    state.items.unshift(normalizeItem({
         id: createId(),
         name,
         quantity,
         ownerId,
         updatedAt: nowIso(),
+        completedAt: "",
         deletedAt: ""
-    });
+    }));
 
     elements.newItemName.value = "";
     elements.newItemQty.value = "";
     persistAndRender();
     await syncGroup("added an item");
+    showToast("Compra anadida", `${name} ya esta en la lista compartida.`, "success");
 }
 
 async function seedItems() {
+    if (!hasGroup()) {
+        showToast("Sin grupo activo", "Crea o entra en un grupo antes de cargar el pack.", "error");
+        return;
+    }
+
     const availableOwners = state.friends.map((friend) => friend.id);
-    state.items = defaultItems.map((item, index) => ({
+    state.items = defaultItems.map((item, index) => normalizeItem({
         id: createId(),
         name: item.name,
         quantity: item.quantity,
         ownerId: availableOwners.length ? availableOwners[index % availableOwners.length] : "",
         updatedAt: nowIso(),
+        completedAt: "",
         deletedAt: ""
     }));
+    uiState.editingItemId = "";
     persistAndRender();
     await syncGroup("loaded the bbq pack");
+    showToast("Pack BBQ cargado", "Ya tienes el pack base listo para repartir.", "success");
 }
 
 function render() {
+    renderSetupGuide();
+    renderOverview();
     renderGroup();
     renderPlan();
     renderOwnerOptions();
     renderItems();
     renderAssignments();
     renderMessages();
+    renderLocks();
+    renderInstallButton();
+}
+
+function renderSetupGuide() {
+    const steps = [
+        {
+            index: 1,
+            title: "Unete al grupo",
+            body: hasGroup() ? `Estas dentro de ${state.groupCode}.` : "Escribe tu nombre, el codigo del grupo y entra."
+        },
+        {
+            index: 2,
+            title: "Completa el plan",
+            body: isPlanReady() ? "Fecha, asistentes y reservas listos." : "Guarda fecha, adultos, ninos, BBQs y mesas."
+        },
+        {
+            index: 3,
+            title: "Reparte la compra",
+            body: getActiveItems().length ? "La lista ya tiene compras para asignar." : "Carga el pack BBQ o anade compras a mano."
+        }
+    ];
+
+    elements.setupGuide.innerHTML = steps
+        .map((step) => {
+            const done =
+                (step.index === 1 && hasGroup()) ||
+                (step.index === 2 && isPlanReady()) ||
+                (step.index === 3 && getActiveItems().length > 0);
+            return `
+                <article class="setup-step ${done ? "is-done" : ""}">
+                    <div class="setup-index">${step.index}</div>
+                    <strong>${escapeHtml(step.title)}</strong>
+                    <p>${escapeHtml(step.body)}</p>
+                </article>
+            `;
+        })
+        .join("");
+}
+
+function renderOverview() {
+    const activeItems = getActiveItems();
+    const pendingItems = activeItems.filter((item) => !item.completedAt).length;
+    const unassignedItems = activeItems.filter((item) => !item.ownerId).length;
+    const cards = [
+        {
+            label: "Amigos en el grupo",
+            value: String(state.friends.length || 0),
+            detail: hasGroup() ? "Personas dentro de la BBQ" : "Crea o entra en un grupo"
+        },
+        {
+            label: "Items pendientes",
+            value: String(pendingItems),
+            detail: unassignedItems ? `${unassignedItems} sin asignar` : "Todo asignado o comprado"
+        },
+        {
+            label: "Mensajes",
+            value: String(getActiveMessages().length),
+            detail: hasGroup() ? "Conversacion compartida" : "El chat se activa al unirse"
+        }
+    ];
+
+    elements.overviewGrid.innerHTML = cards
+        .map((card) => `
+            <article class="overview-card">
+                <strong>${escapeHtml(card.label)}</strong>
+                <div class="metric">${escapeHtml(card.value)}</div>
+                <p>${escapeHtml(card.detail)}</p>
+            </article>
+        `)
+        .join("");
+
+    elements.overviewNote.textContent = getOverviewNote(pendingItems, unassignedItems);
+}
+
+function getOverviewNote(pendingItems, unassignedItems) {
+    if (!hasGroup()) {
+        return "Empieza por unirte al grupo o cargar la demo para activar el resto de la app.";
+    }
+    if (!isPlanReady()) {
+        return "Siguiente paso recomendado: completa el plan con fecha, asistentes, BBQs y mesas.";
+    }
+    if (!getActiveItems().length) {
+        return "Siguiente paso recomendado: carga el pack BBQ y empieza a asignar compras.";
+    }
+    if (unassignedItems) {
+        return `Quedan ${unassignedItems} compras sin asignar. Repartidlas para evitar olvidos.`;
+    }
+    if (pendingItems) {
+        return `Todo esta asignado. Aun quedan ${pendingItems} compras pendientes de marcar como hechas.`;
+    }
+    return "La BBQ esta muy bien encaminada: plan completo, compras repartidas y chat activo.";
 }
 
 function renderGroup() {
     elements.activeGroupChip.textContent = state.groupCode || "Sin grupo";
 
     if (!state.friends.length) {
-        elements.friendStrip.innerHTML = '<div class="empty-state">Todavia no hay amigos en este grupo.</div>';
+        elements.friendStrip.innerHTML = '<div class="empty-state">Todavia no hay amigos en este grupo. Puedes arrancar con Crear grupo demo.</div>';
         return;
     }
 
@@ -339,11 +497,15 @@ function renderOwnerOptions() {
 }
 
 function renderItems() {
-    const activeItems = getActiveItems();
+    const activeItems = filterItemsByView(getActiveItems());
     elements.itemsCounter.textContent = `${activeItems.length} items`;
 
+    elements.shoppingFilters.querySelectorAll("[data-filter]").forEach((button) => {
+        button.classList.toggle("is-active", button.getAttribute("data-filter") === uiState.itemFilter);
+    });
+
     if (!activeItems.length) {
-        elements.shoppingList.innerHTML = '<div class="empty-state">No hay items aun. Carga el pack BBQ o anade compras a mano.</div>';
+        elements.shoppingList.innerHTML = '<div class="empty-state">No hay items para este filtro. Prueba con otro estado o carga el pack BBQ.</div>';
         return;
     }
 
@@ -362,8 +524,35 @@ function renderItems() {
                 )
                 .join("");
 
+            if (uiState.editingItemId === item.id) {
+                return `
+                    <article class="shopping-item">
+                        <div class="shopping-top">
+                            <div class="shopping-badges">
+                                <span class="status-badge ${item.completedAt ? "done" : "pending"}">${item.completedAt ? "Comprado" : "Pendiente"}</span>
+                            </div>
+                        </div>
+                        <div class="form-grid compact-grid">
+                            <label>
+                                <span>Item</span>
+                                <input data-edit-name="${item.id}" type="text" value="${escapeHtml(item.name)}">
+                            </label>
+                            <label>
+                                <span>Detalle</span>
+                                <input data-edit-qty="${item.id}" type="text" value="${escapeHtml(item.quantity)}" placeholder="Sin detalle">
+                            </label>
+                        </div>
+                        <div class="shopping-actions">
+                            <select data-owner-select="${item.id}">${ownerOptions}</select>
+                            <button class="inline-action" type="button" data-save-item="${item.id}">Guardar</button>
+                            <button class="inline-action" type="button" data-cancel-edit="${item.id}">Cancelar</button>
+                        </div>
+                    </article>
+                `;
+            }
+
             return `
-                <article class="shopping-item">
+                <article class="shopping-item ${item.completedAt ? "is-done" : ""}">
                     <div class="shopping-top">
                         <div>
                             <strong>${escapeHtml(item.name)}</strong>
@@ -371,15 +560,27 @@ function renderItems() {
                         </div>
                         <div>${owner ? `Compra: ${escapeHtml(owner.name)}` : "Sin asignar"}</div>
                     </div>
+                    <div class="shopping-badges">
+                        <span class="status-badge ${item.completedAt ? "done" : "pending"}">${item.completedAt ? "Comprado" : "Pendiente"}</span>
+                        ${item.ownerId ? "" : '<span class="status-badge pending">Sin asignar</span>'}
+                    </div>
                     <div class="shopping-actions">
                         <select data-owner-select="${item.id}">${ownerOptions}</select>
-                        <button class="inline-button" data-delete-item="${item.id}">Eliminar</button>
+                        <button class="inline-action" type="button" data-toggle-done="${item.id}">
+                            ${item.completedAt ? "Marcar pendiente" : "Marcar comprado"}
+                        </button>
+                        <button class="inline-action" type="button" data-edit-item="${item.id}">Editar</button>
+                        <button class="inline-button" type="button" data-delete-item="${item.id}">Eliminar</button>
                     </div>
                 </article>
             `;
         })
         .join("");
 
+    wireShoppingActions();
+}
+
+function wireShoppingActions() {
     document.querySelectorAll("[data-owner-select]").forEach((select) => {
         select.addEventListener("change", async (event) => {
             const itemId = event.target.getAttribute("data-owner-select");
@@ -390,7 +591,35 @@ function renderItems() {
     document.querySelectorAll("[data-delete-item]").forEach((button) => {
         button.addEventListener("click", async (event) => {
             const itemId = event.target.getAttribute("data-delete-item");
-            await deleteItem(itemId);
+            await withButtonState(event.target, "Eliminando...", () => deleteItem(itemId));
+        });
+    });
+
+    document.querySelectorAll("[data-toggle-done]").forEach((button) => {
+        button.addEventListener("click", async (event) => {
+            const itemId = event.target.getAttribute("data-toggle-done");
+            await withButtonState(event.target, "Guardando...", () => toggleItemDone(itemId));
+        });
+    });
+
+    document.querySelectorAll("[data-edit-item]").forEach((button) => {
+        button.addEventListener("click", (event) => {
+            uiState.editingItemId = event.target.getAttribute("data-edit-item") || "";
+            renderItems();
+        });
+    });
+
+    document.querySelectorAll("[data-cancel-edit]").forEach((button) => {
+        button.addEventListener("click", () => {
+            uiState.editingItemId = "";
+            renderItems();
+        });
+    });
+
+    document.querySelectorAll("[data-save-item]").forEach((button) => {
+        button.addEventListener("click", async (event) => {
+            const itemId = event.target.getAttribute("data-save-item");
+            await withButtonState(event.target, "Guardando...", () => saveEditedItem(itemId));
         });
     });
 }
@@ -407,8 +636,9 @@ function renderAssignments() {
         .slice()
         .sort((left, right) => left.name.localeCompare(right.name, "es"))
         .map((friend) => {
-            const ownedItems = activeItems.filter((item) => item.ownerId === friend.id);
-            const listContent = ownedItems.length
+            const ownedItems = activeItems.filter((item) => item.ownerId === friend.id && !item.completedAt);
+            const doneItems = activeItems.filter((item) => item.ownerId === friend.id && item.completedAt);
+            const listContent = ownedItems.length || doneItems.length
                 ? `
                     <ul>
                         ${ownedItems
@@ -417,6 +647,16 @@ function renderAssignments() {
                                     <li>
                                         <strong>${escapeHtml(item.name)}</strong><br>
                                         ${escapeHtml(item.quantity || "Sin detalle")}
+                                    </li>
+                                `
+                            )
+                            .join("")}
+                        ${doneItems
+                            .map(
+                                (item) => `
+                                    <li>
+                                        <strong>${escapeHtml(item.name)}</strong><br>
+                                        Comprado
                                     </li>
                                 `
                             )
@@ -440,7 +680,7 @@ function renderMessages() {
     elements.messagesCounter.textContent = `${activeMessages.length} mensajes`;
 
     if (!activeMessages.length) {
-        elements.chatThread.innerHTML = '<div class="empty-state">Aun no hay mensajes. Usa este chat para coordinar compras y llegada.</div>';
+        elements.chatThread.innerHTML = '<div class="empty-state">Aun no hay mensajes. Usa ToniChat para coordinar compras y llegada.</div>';
         return;
     }
 
@@ -464,6 +704,16 @@ function renderMessages() {
     lastSeenMessageId = getLastSeenMessageId(activeMessages);
 }
 
+function renderLocks() {
+    document.querySelectorAll("[data-requires-group]").forEach((panel) => {
+        panel.classList.toggle("is-locked", !hasGroup());
+    });
+}
+
+function renderInstallButton() {
+    elements.installAppButton.classList.toggle("hidden", !uiState.deferredInstallPrompt);
+}
+
 async function updateItemOwner(itemId, ownerId) {
     const item = state.items.find((entry) => entry.id === itemId);
     if (!item) return;
@@ -471,6 +721,7 @@ async function updateItemOwner(itemId, ownerId) {
     item.updatedAt = nowIso();
     persistAndRender();
     await syncGroup("updated an assignment");
+    showToast("Asignacion actualizada", "La compra ya tiene responsable.", "success");
 }
 
 async function deleteItem(itemId) {
@@ -478,38 +729,96 @@ async function deleteItem(itemId) {
     if (!item) return;
     item.deletedAt = nowIso();
     item.updatedAt = item.deletedAt;
+    uiState.editingItemId = "";
     persistAndRender();
     await syncGroup("deleted an item");
+    showToast("Item eliminado", "La compra ha salido de la lista compartida.", "success");
+}
+
+async function toggleItemDone(itemId) {
+    const item = state.items.find((entry) => entry.id === itemId);
+    if (!item) return;
+    item.completedAt = item.completedAt ? "" : nowIso();
+    item.updatedAt = nowIso();
+    persistAndRender();
+    await syncGroup("toggled item completion");
+    showToast(
+        item.completedAt ? "Compra marcada" : "Compra reabierta",
+        item.completedAt ? "La compra ya aparece como hecha." : "La compra vuelve a pendiente.",
+        "success"
+    );
+}
+
+async function saveEditedItem(itemId) {
+    const item = state.items.find((entry) => entry.id === itemId);
+    if (!item) return;
+
+    const nameInput = document.querySelector(`[data-edit-name="${itemId}"]`);
+    const qtyInput = document.querySelector(`[data-edit-qty="${itemId}"]`);
+    const ownerSelect = document.querySelector(`[data-owner-select="${itemId}"]`);
+
+    const nextName = nameInput ? nameInput.value.trim() : item.name;
+    const nextQty = qtyInput ? qtyInput.value.trim() : item.quantity;
+
+    if (!nextName) {
+        showToast("Falta el nombre", "El item no puede quedarse sin nombre.", "error");
+        return;
+    }
+
+    item.name = nextName;
+    item.quantity = nextQty;
+    item.ownerId = ownerSelect ? ownerSelect.value : item.ownerId;
+    item.updatedAt = nowIso();
+    uiState.editingItemId = "";
+    persistAndRender();
+    await syncGroup("edited an item");
+    showToast("Item actualizado", "La compra se ha editado correctamente.", "success");
 }
 
 async function sendMessage() {
     const text = elements.chatMessage.value.trim();
     if (!text) {
-        window.alert("Escribe un mensaje antes de enviarlo.");
+        showToast("Mensaje vacio", "Escribe algo antes de enviarlo.", "error");
         return;
     }
 
-    if (!state.groupCode || !state.currentFriendId) {
-        window.alert("Unete primero a un grupo para poder usar el chat.");
+    if (!hasGroup() || !state.currentFriendId) {
+        showToast("Sin grupo activo", "Unete primero a un grupo para usar ToniChat.", "error");
         return;
     }
 
-    state.messages.push({
+    maybeRequestNotificationPermission();
+
+    state.messages.push(normalizeMessage({
         id: createId(),
         authorId: state.currentFriendId,
         text,
         createdAt: nowIso(),
         updatedAt: nowIso(),
         deletedAt: ""
-    });
+    }));
 
     elements.chatMessage.value = "";
     persistAndRender();
     await syncGroup("sent a chat message");
+    showToast("Mensaje enviado", "ToniChat se ha actualizado para todos.", "success");
 }
 
 function getActiveItems() {
     return state.items.filter((item) => !item.deletedAt);
+}
+
+function filterItemsByView(items) {
+    if (uiState.itemFilter === "pending") {
+        return items.filter((item) => !item.completedAt);
+    }
+    if (uiState.itemFilter === "done") {
+        return items.filter((item) => item.completedAt);
+    }
+    if (uiState.itemFilter === "unassigned") {
+        return items.filter((item) => !item.ownerId);
+    }
+    return items;
 }
 
 function getActiveMessages() {
@@ -519,6 +828,20 @@ function getActiveMessages() {
         .sort((left, right) => (left.createdAt || "").localeCompare(right.createdAt || ""));
 }
 
+function hasGroup() {
+    return Boolean(state.groupCode);
+}
+
+function isPlanReady() {
+    return Boolean(
+        state.plan.date &&
+        state.plan.adults !== "" &&
+        state.plan.children !== "" &&
+        state.plan.bbqReserved &&
+        state.plan.tablesReserved
+    );
+}
+
 function findFriendByName(name) {
     return state.friends.find(
         (entry) => entry.name.trim().toLowerCase() === name.trim().toLowerCase()
@@ -526,18 +849,12 @@ function findFriendByName(name) {
 }
 
 function createFriend(name) {
-    return {
+    return normalizeFriend({
         id: createId(),
+        deviceId: "",
         name,
         updatedAt: nowIso()
-    };
-}
-
-function touchFriend(friendId) {
-    const friend = state.friends.find((entry) => entry.id === friendId);
-    if (friend) {
-        friend.updatedAt = nowIso();
-    }
+    });
 }
 
 async function syncGroup(reason) {
@@ -554,7 +871,23 @@ async function syncGroup(reason) {
 
     try {
         updateSyncBadge("Sincronizando con Supabase...", "");
-        const row = buildGroupRow(reason);
+
+        const localGroup = buildGroupPayload();
+        const remoteRow = await fetchRemoteGroupRow(state.groupCode);
+        const remoteGroup = remoteRow ? rowToGroup(remoteRow) : blankGroupPayload(state.groupCode);
+        const mergedGroup = mergeGroupData(localGroup, remoteGroup);
+
+        const row = {
+            code: state.groupCode,
+            plan: mergedGroup.plan,
+            friends: mergedGroup.friends,
+            items: mergedGroup.items,
+            messages: mergedGroup.messages,
+            updated_by: state.clientId,
+            updated_reason: reason,
+            updated_at: nowIso()
+        };
+
         const { data, error } = await supabaseClient
             .from("bbq_groups")
             .upsert(row, { onConflict: "code" })
@@ -573,6 +906,7 @@ async function syncGroup(reason) {
         console.error(error);
         persistAndRender();
         updateSyncBadge("Error conectando con Supabase", "is-error");
+        showToast("No se pudo sincronizar", "Tus cambios siguen en este dispositivo. Vuelve a intentarlo en un momento.", "error");
     }
 }
 
@@ -582,16 +916,7 @@ async function loadRemoteGroup(groupCode) {
     }
 
     try {
-        const { data, error } = await supabaseClient
-            .from("bbq_groups")
-            .select("*")
-            .eq("code", groupCode)
-            .maybeSingle();
-
-        if (error) {
-            throw error;
-        }
-
+        const data = await fetchRemoteGroupRow(groupCode);
         if (data) {
             applyGroupRow(data);
             state.lastSyncedAt = nowIso();
@@ -603,7 +928,22 @@ async function loadRemoteGroup(groupCode) {
     } catch (error) {
         console.error(error);
         updateSyncBadge("No se pudo leer Supabase", "is-error");
+        showToast("Error de lectura", "No hemos podido cargar el grupo desde Supabase.", "error");
     }
+}
+
+async function fetchRemoteGroupRow(groupCode) {
+    const { data, error } = await supabaseClient
+        .from("bbq_groups")
+        .select("*")
+        .eq("code", groupCode)
+        .maybeSingle();
+
+    if (error) {
+        throw error;
+    }
+
+    return data;
 }
 
 function subscribeToGroup(groupCode) {
@@ -644,35 +984,45 @@ function subscribeToGroup(groupCode) {
 
 function applyGroupRow(row) {
     if (!row) return;
+
     const previousLastMessageId = getLastSeenMessageId(getActiveMessages());
-    state.groupCode = row.code || state.groupCode;
-    state.plan = row.plan || cloneInitialState().plan;
-    state.friends = Array.isArray(row.friends) ? row.friends : [];
-    state.items = Array.isArray(row.items) ? row.items : [];
-    state.messages = Array.isArray(row.messages) ? row.messages : [];
+    const normalizedRow = normalizeGroupRow(row);
+
+    state.groupCode = normalizedRow.code || state.groupCode;
+    state.plan = normalizedRow.plan;
+    state.friends = normalizedRow.friends;
+    state.items = normalizedRow.items;
+    state.messages = normalizedRow.messages;
 
     const currentFriend = state.friends.find((friend) => friend.id === state.currentFriendId);
     if (!currentFriend) {
+        const deviceMatch = state.friends.find((friend) => friend.deviceId === state.clientId);
         const typedName = elements.friendName.value.trim();
-        const fallback = state.friends.find((friend) => {
-            return typedName && friend.name.toLowerCase() === typedName.toLowerCase();
-        });
-        state.currentFriendId = fallback ? fallback.id : "";
+        const fallback = state.friends.find((friend) => typedName && friend.name.toLowerCase() === typedName.toLowerCase());
+        state.currentFriendId = deviceMatch ? deviceMatch.id : fallback ? fallback.id : "";
     }
 
     notifyForIncomingMessage(previousLastMessageId);
 }
 
-function buildGroupRow(reason) {
+function buildGroupPayload() {
     return {
-        code: state.groupCode,
-        plan: state.plan,
-        friends: state.friends,
-        items: state.items,
-        messages: state.messages,
-        updated_by: state.clientId,
-        updated_reason: reason,
-        updated_at: nowIso()
+        groupCode: state.groupCode,
+        plan: normalizePlan(state.plan),
+        friends: state.friends.map(normalizeFriend),
+        items: state.items.map(normalizeItem),
+        messages: state.messages.map(normalizeMessage)
+    };
+}
+
+function rowToGroup(row) {
+    const normalized = normalizeGroupRow(row);
+    return {
+        groupCode: normalized.code,
+        plan: normalized.plan,
+        friends: normalized.friends,
+        items: normalized.items,
+        messages: normalized.messages
     };
 }
 
@@ -688,6 +1038,215 @@ function updateSyncBadge(text, tone) {
     if (tone) {
         elements.syncStatus.classList.add(tone);
     }
+    announce(text);
+}
+
+async function withButtonState(button, loadingLabel, callback) {
+    const originalLabel = button.textContent;
+    button.disabled = true;
+    button.textContent = loadingLabel;
+    try {
+        await callback();
+    } finally {
+        button.disabled = false;
+        button.textContent = originalLabel;
+    }
+}
+
+function showToast(title, body, tone) {
+    const toast = document.createElement("article");
+    toast.className = `toast ${tone || "success"}`;
+    toast.innerHTML = `<strong>${escapeHtml(title)}</strong><span>${escapeHtml(body)}</span>`;
+    elements.toastStack.appendChild(toast);
+    window.setTimeout(() => {
+        toast.remove();
+    }, TOAST_DURATION_MS);
+}
+
+function announce(message) {
+    elements.liveRegion.textContent = "";
+    window.setTimeout(() => {
+        elements.liveRegion.textContent = message;
+    }, 10);
+}
+
+function setupInstallPrompt() {
+    window.addEventListener("beforeinstallprompt", (event) => {
+        event.preventDefault();
+        uiState.deferredInstallPrompt = event;
+        renderInstallButton();
+        showToast("Instalacion disponible", "Puedes instalar ToniBBQ y abrirla como una app de verdad.", "success");
+    });
+}
+
+async function installPwa() {
+    if (!uiState.deferredInstallPrompt) {
+        return;
+    }
+
+    uiState.deferredInstallPrompt.prompt();
+    await uiState.deferredInstallPrompt.userChoice;
+    uiState.deferredInstallPrompt = null;
+    renderInstallButton();
+}
+
+function registerServiceWorker() {
+    if (!("serviceWorker" in navigator)) {
+        return;
+    }
+
+    navigator.serviceWorker.register("./service-worker.js").catch((error) => {
+        console.error(error);
+    });
+}
+
+function maybeRequestNotificationPermission() {
+    if (!("Notification" in window)) {
+        return;
+    }
+    if (Notification.permission === "default") {
+        Notification.requestPermission().catch((error) => {
+            console.error(error);
+        });
+    }
+}
+
+function normalizeClientState(candidate) {
+    return {
+        groupCode: normalizeGroupCode(candidate.groupCode || ""),
+        currentFriendId: String(candidate.currentFriendId || ""),
+        clientId: String(candidate.clientId || createId()),
+        lastSyncedAt: String(candidate.lastSyncedAt || ""),
+        plan: normalizePlan(candidate.plan || {}),
+        friends: Array.isArray(candidate.friends) ? candidate.friends.map(normalizeFriend) : [],
+        items: Array.isArray(candidate.items) ? candidate.items.map(normalizeItem) : [],
+        messages: Array.isArray(candidate.messages) ? candidate.messages.map(normalizeMessage) : []
+    };
+}
+
+function normalizeGroupRow(row) {
+    return {
+        code: normalizeGroupCode(row.code || row.groupCode || ""),
+        plan: normalizePlan(row.plan || {}),
+        friends: Array.isArray(row.friends) ? dedupeFriends(row.friends.map(normalizeFriend)) : [],
+        items: Array.isArray(row.items) ? dedupeById(row.items.map(normalizeItem)) : [],
+        messages: Array.isArray(row.messages) ? dedupeById(row.messages.map(normalizeMessage)) : []
+    };
+}
+
+function blankPlan() {
+    return {
+        date: "",
+        adults: "",
+        children: "",
+        bbqReserved: "",
+        tablesReserved: "",
+        notes: "",
+        updatedAt: ""
+    };
+}
+
+function blankGroupPayload(groupCode) {
+    return {
+        groupCode,
+        plan: blankPlan(),
+        friends: [],
+        items: [],
+        messages: []
+    };
+}
+
+function normalizePlan(plan) {
+    return {
+        date: String(plan.date || ""),
+        adults: String(plan.adults || ""),
+        children: String(plan.children || ""),
+        bbqReserved: String(plan.bbqReserved || ""),
+        tablesReserved: String(plan.tablesReserved || ""),
+        notes: String(plan.notes || ""),
+        updatedAt: String(plan.updatedAt || "")
+    };
+}
+
+function normalizeFriend(friend) {
+    return {
+        id: String(friend.id || createId()),
+        deviceId: String(friend.deviceId || ""),
+        name: String(friend.name || "Amigo"),
+        updatedAt: String(friend.updatedAt || "")
+    };
+}
+
+function normalizeItem(item) {
+    return {
+        id: String(item.id || createId()),
+        name: String(item.name || ""),
+        quantity: String(item.quantity || ""),
+        ownerId: String(item.ownerId || ""),
+        updatedAt: String(item.updatedAt || ""),
+        completedAt: String(item.completedAt || ""),
+        deletedAt: String(item.deletedAt || "")
+    };
+}
+
+function normalizeMessage(message) {
+    return {
+        id: String(message.id || createId()),
+        authorId: String(message.authorId || ""),
+        text: String(message.text || ""),
+        createdAt: String(message.createdAt || nowIso()),
+        updatedAt: String(message.updatedAt || message.createdAt || nowIso()),
+        deletedAt: String(message.deletedAt || "")
+    };
+}
+
+function dedupeById(records) {
+    const map = new Map();
+    records.forEach((record) => {
+        const current = map.get(record.id);
+        if (!current || String(record.updatedAt) >= String(current.updatedAt)) {
+            map.set(record.id, record);
+        }
+    });
+    return Array.from(map.values());
+}
+
+function dedupeFriends(friends) {
+    const byId = dedupeById(friends);
+    const byName = new Map();
+    byId.forEach((friend) => {
+        const key = friend.deviceId || friend.name.trim().toLowerCase();
+        const current = byName.get(key);
+        if (!current || friend.updatedAt >= current.updatedAt) {
+            byName.set(key, friend);
+        }
+    });
+    return Array.from(byName.values()).sort((left, right) => left.name.localeCompare(right.name, "es"));
+}
+
+function mergeGroupData(localGroup, remoteGroup) {
+    return {
+        groupCode: localGroup.groupCode || remoteGroup.groupCode || "",
+        plan: mergeByUpdatedAt(normalizePlan(localGroup.plan), normalizePlan(remoteGroup.plan)),
+        friends: dedupeFriends([].concat(remoteGroup.friends || [], localGroup.friends || [])),
+        items: mergeRecordCollections(remoteGroup.items || [], localGroup.items || [], normalizeItem),
+        messages: mergeRecordCollections(remoteGroup.messages || [], localGroup.messages || [], normalizeMessage)
+    };
+}
+
+function mergeRecordCollections(remoteRecords, localRecords, normalizeFn) {
+    const merged = new Map();
+    remoteRecords.concat(localRecords).map(normalizeFn).forEach((record) => {
+        const current = merged.get(record.id);
+        if (!current || String(record.updatedAt) >= String(current.updatedAt)) {
+            merged.set(record.id, record);
+        }
+    });
+    return Array.from(merged.values()).sort((left, right) => String(left.updatedAt).localeCompare(String(right.updatedAt)));
+}
+
+function mergeByUpdatedAt(left, right) {
+    return String(left.updatedAt || "") >= String(right.updatedAt || "") ? left : right;
 }
 
 function normalizeGroupCode(value) {
@@ -699,11 +1258,14 @@ function normalizeGroupCode(value) {
 }
 
 function createId() {
+    if (window.crypto && typeof window.crypto.randomUUID === "function") {
+        return window.crypto.randomUUID();
+    }
     return Math.random().toString(36).slice(2, 10);
 }
 
 function cloneInitialState() {
-    return JSON.parse(JSON.stringify(initialState));
+    return normalizeClientState(JSON.parse(JSON.stringify(initialState)));
 }
 
 function nowIso() {
@@ -757,6 +1319,11 @@ function getLastSeenMessageId(messages) {
 function notifyForIncomingMessage(previousLastMessageId) {
     const activeMessages = getActiveMessages();
     if (!activeMessages.length) {
+        return;
+    }
+
+    if (!previousLastMessageId) {
+        lastSeenMessageId = getLastSeenMessageId(activeMessages);
         return;
     }
 

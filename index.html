@@ -23,15 +23,46 @@
                 <span>Grupos</span>
                 <span>Compras compartidas</span>
             </div>
-            <div class="sync-status" id="syncStatus">Modo local</div>
+            <div class="hero-actions">
+                <button class="button secondary hidden" id="installAppButton" type="button">Instalar ToniBBQ</button>
+                <div class="sync-status" id="syncStatus" role="status" aria-live="polite">Modo local</div>
+            </div>
         </header>
 
-        <main class="content">
-            <section class="panel panel-highlight">
+        <main class="content" aria-label="Contenido principal de ToniBBQ">
+            <section class="panel setup-panel" aria-labelledby="setupHeading">
+                <div class="panel-head split">
+                    <div>
+                        <p class="eyebrow">Primeros pasos</p>
+                        <h2 id="setupHeading">Monta la BBQ en 3 pasos</h2>
+                    </div>
+                </div>
+                <div class="setup-grid" id="setupGuide"></div>
+            </section>
+
+            <section class="panel overview-panel" aria-labelledby="overviewHeading">
+                <div class="panel-head split">
+                    <div>
+                        <p class="eyebrow">Resumen ejecutivo</p>
+                        <h2 id="overviewHeading">Estado de la barbacoa</h2>
+                    </div>
+                </div>
+                <div class="overview-grid" id="overviewGrid"></div>
+                <div class="overview-note" id="overviewNote"></div>
+            </section>
+
+            <nav class="section-nav" aria-label="Secciones de la app">
+                <a href="#groupSection">Grupo</a>
+                <a href="#planSection">Plan</a>
+                <a href="#shoppingSection">Compra</a>
+                <a href="#chatSection">Chat</a>
+            </nav>
+
+            <section class="panel panel-highlight" id="groupSection" aria-labelledby="groupHeading">
                 <div class="panel-head">
                     <div>
                         <p class="eyebrow">Tu grupo</p>
-                        <h2>Entrar o crear grupo</h2>
+                        <h2 id="groupHeading">Entrar o crear grupo</h2>
                     </div>
                     <div class="group-chip" id="activeGroupChip">Sin grupo</div>
                 </div>
@@ -55,11 +86,15 @@
                 <div class="friend-strip" id="friendStrip"></div>
             </section>
 
-            <section class="panel">
+            <section class="panel gated-panel" id="planSection" aria-labelledby="planHeading" data-requires-group="true">
+                <div class="panel-lock">
+                    <strong>Unete primero a un grupo</strong>
+                    <span>Despues podras guardar fecha, adultos, ninos, BBQs y mesas.</span>
+                </div>
                 <div class="panel-head">
                     <div>
                         <p class="eyebrow">Plan de BBQ</p>
-                        <h2>Reserva y montaje</h2>
+                        <h2 id="planHeading">Reserva y montaje</h2>
                     </div>
                 </div>
 
@@ -101,13 +136,24 @@
                 <div class="summary-card" id="planSummary"></div>
             </section>
 
-            <section class="panel">
+            <section class="panel gated-panel" id="shoppingSection" aria-labelledby="shoppingHeading" data-requires-group="true">
+                <div class="panel-lock">
+                    <strong>Necesitas un grupo activo</strong>
+                    <span>Carga el pack BBQ, anade compras y reparte quien compra que.</span>
+                </div>
                 <div class="panel-head split">
                     <div>
                         <p class="eyebrow">Lista de compra</p>
-                        <h2>Asignar quien compra cada cosa</h2>
+                        <h2 id="shoppingHeading">Asignar quien compra cada cosa</h2>
                     </div>
                     <div class="total-badge" id="itemsCounter">0 items</div>
+                </div>
+
+                <div class="filter-row" id="shoppingFilters" role="tablist" aria-label="Filtros de compra">
+                    <button class="filter-chip is-active" type="button" data-filter="all">Todos</button>
+                    <button class="filter-chip" type="button" data-filter="pending">Pendientes</button>
+                    <button class="filter-chip" type="button" data-filter="done">Comprados</button>
+                    <button class="filter-chip" type="button" data-filter="unassigned">Sin asignar</button>
                 </div>
 
                 <div class="form-grid compact-grid add-item-grid">
@@ -133,21 +179,29 @@
                 <div class="shopping-list" id="shoppingList"></div>
             </section>
 
-            <section class="panel panel-glow">
+            <section class="panel panel-glow gated-panel" aria-labelledby="assignHeading" data-requires-group="true">
+                <div class="panel-lock">
+                    <strong>Primero entra al grupo</strong>
+                    <span>El reparto se actualizara cuando asignes compras a cada amigo.</span>
+                </div>
                 <div class="panel-head split">
                     <div>
                         <p class="eyebrow">Reparto</p>
-                        <h2>Que compra cada amigo</h2>
+                        <h2 id="assignHeading">Que compra cada amigo</h2>
                     </div>
                 </div>
                 <div class="assignments-grid" id="assignmentsGrid"></div>
             </section>
 
-            <section class="panel chat-panel">
+            <section class="panel chat-panel gated-panel" id="chatSection" aria-labelledby="chatHeading" data-requires-group="true">
+                <div class="panel-lock">
+                    <strong>Activa un grupo para usar ToniChat</strong>
+                    <span>Asi podreis coordinar compras, llegada y ultimos cambios.</span>
+                </div>
                 <div class="panel-head split">
                     <div>
                         <p class="eyebrow">Chat BBQ</p>
-                        <h2>ToniChat</h2>
+                        <h2 id="chatHeading">ToniChat</h2>
                     </div>
                     <div class="total-badge" id="messagesCounter">0 mensajes</div>
                 </div>
@@ -160,11 +214,14 @@
                 </label>
 
                 <div class="action-row">
-                    <button class="button primary" id="sendMessageButton">Enviar mensaje</button>
+                    <button class="button primary" id="sendMessageButton" type="button">Enviar mensaje</button>
                 </div>
             </section>
         </main>
     </div>
+
+    <div class="toast-stack" id="toastStack" aria-live="polite" aria-atomic="true"></div>
+    <div class="sr-only" id="liveRegion" aria-live="assertive" aria-atomic="true"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="config.js"></script>
