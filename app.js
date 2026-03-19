@@ -56,6 +56,7 @@ const supabaseClient = hasSupabaseConfig
 
 const state = loadState();
 let activeChannel = null;
+let lastSeenMessageId = getLastSeenMessageId(state.messages);
 
 const elements = {
     friendName: document.getElementById("friendName"),
@@ -148,6 +149,12 @@ async function initializeSync() {
     if (!hasSupabaseConfig) {
         updateSyncBadge("Configura Supabase para compartir la app", "is-offline");
         return;
+    }
+
+    if ("Notification" in window && Notification.permission === "default") {
+        Notification.requestPermission().catch(() => {
+            // Ignore permission prompt errors.
+        });
     }
 
     updateSyncBadge("Supabase conectado", "");
@@ -454,6 +461,7 @@ function renderMessages() {
         .join("");
 
     elements.chatThread.scrollTop = elements.chatThread.scrollHeight;
+    lastSeenMessageId = getLastSeenMessageId(activeMessages);
 }
 
 async function updateItemOwner(itemId, ownerId) {
@@ -636,6 +644,7 @@ function subscribeToGroup(groupCode) {
 
 function applyGroupRow(row) {
     if (!row) return;
+    const previousLastMessageId = getLastSeenMessageId(getActiveMessages());
     state.groupCode = row.code || state.groupCode;
     state.plan = row.plan || cloneInitialState().plan;
     state.friends = Array.isArray(row.friends) ? row.friends : [];
@@ -650,6 +659,8 @@ function applyGroupRow(row) {
         });
         state.currentFriendId = fallback ? fallback.id : "";
     }
+
+    notifyForIncomingMessage(previousLastMessageId);
 }
 
 function buildGroupRow(reason) {
@@ -732,6 +743,52 @@ function getUpcomingSaturday() {
     const distance = (6 - day + 7) % 7 || 7;
     date.setDate(date.getDate() + distance);
     return date.toISOString().slice(0, 10);
+}
+
+function getLastSeenMessageId(messages) {
+    const list = Array.isArray(messages) ? messages : [];
+    const activeMessages = list
+        .filter((message) => !message.deletedAt)
+        .slice()
+        .sort((left, right) => (left.createdAt || "").localeCompare(right.createdAt || ""));
+    return activeMessages.length ? activeMessages[activeMessages.length - 1].id : "";
+}
+
+function notifyForIncomingMessage(previousLastMessageId) {
+    const activeMessages = getActiveMessages();
+    if (!activeMessages.length) {
+        return;
+    }
+
+    const latestMessage = activeMessages[activeMessages.length - 1];
+    if (!latestMessage || latestMessage.id === previousLastMessageId || latestMessage.id === lastSeenMessageId) {
+        return;
+    }
+
+    if (latestMessage.authorId === state.currentFriendId) {
+        lastSeenMessageId = latestMessage.id;
+        return;
+    }
+
+    if (!("Notification" in window) || Notification.permission !== "granted") {
+        lastSeenMessageId = latestMessage.id;
+        return;
+    }
+
+    const author = state.friends.find((friend) => friend.id === latestMessage.authorId);
+    const title = author ? `${author.name} en ToniChat` : "Nuevo mensaje en ToniChat";
+
+    try {
+        new Notification(title, {
+            body: latestMessage.text,
+            icon: "icon.svg",
+            badge: "icon.svg"
+        });
+    } catch (error) {
+        // Ignore browser notification errors.
+    }
+
+    lastSeenMessageId = latestMessage.id;
 }
 
 function escapeHtml(value) {
