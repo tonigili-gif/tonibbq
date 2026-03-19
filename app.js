@@ -47,7 +47,7 @@ const hasSupabaseConfig = Boolean(
     typeof window.supabase.createClient === "function"
 );
 
-const supabase = hasSupabaseConfig
+const supabaseClient = hasSupabaseConfig
     ? window.supabase.createClient(
         SUPABASE_CONFIG.supabaseUrl,
         SUPABASE_CONFIG.supabaseAnonKey
@@ -547,7 +547,7 @@ async function syncGroup(reason) {
     try {
         updateSyncBadge("Sincronizando con Supabase...", "");
         const row = buildGroupRow(reason);
-        const { data, error } = await supabase
+        const { data, error } = await supabaseClient
             .from("bbq_groups")
             .upsert(row, { onConflict: "code" })
             .select()
@@ -574,7 +574,7 @@ async function loadRemoteGroup(groupCode) {
     }
 
     try {
-        const { data, error } = await supabase
+        const { data, error } = await supabaseClient
             .from("bbq_groups")
             .select("*")
             .eq("code", groupCode)
@@ -604,11 +604,11 @@ function subscribeToGroup(groupCode) {
     }
 
     if (activeChannel) {
-        supabase.removeChannel(activeChannel);
+        supabaseClient.removeChannel(activeChannel);
         activeChannel = null;
     }
 
-    activeChannel = supabase
+    activeChannel = supabaseClient
         .channel(`bbq-group-${groupCode}`)
         .on(
             "postgres_changes",
