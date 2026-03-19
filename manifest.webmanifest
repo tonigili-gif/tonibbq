@@ -1,0 +1,17 @@
+{
+  "name": "ToniBBQ",
+  "short_name": "ToniBBQ",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#071a11",
+  "theme_color": "#0f5132",
+  "description": "Organiza compras y tareas para una barbacoa con amigos.",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

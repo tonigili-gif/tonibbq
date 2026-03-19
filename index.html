@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>ToniBBQ</title>
+    <meta name="theme-color" content="#0f5132">
+    <meta name="description" content="Organiza las compras de una barbacoa con amigos en ToniBBQ.">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="apple-touch-icon" href="icon.svg">
+</head>
+<body>
+    <div class="app-shell">
+        <header class="hero">
+            <div class="hero-badge">Tejar de Somontes</div>
+            <h1>ToniBBQ</h1>
+            <p class="hero-copy">
+                La app para organizar la compra, las reservas y el reparto de tareas de vuestra barbacoa.
+            </p>
+            <div class="hero-pills">
+                <span>Movil-first</span>
+                <span>Grupos</span>
+                <span>Compras compartidas</span>
+            </div>
+            <div class="sync-status" id="syncStatus">Modo local</div>
+        </header>
+
+        <main class="content">
+            <section class="panel panel-highlight">
+                <div class="panel-head">
+                    <div>
+                        <p class="eyebrow">Tu grupo</p>
+                        <h2>Entrar o crear grupo</h2>
+                    </div>
+                    <div class="group-chip" id="activeGroupChip">Sin grupo</div>
+                </div>
+
+                <div class="form-grid compact-grid">
+                    <label>
+                        <span>Tu nombre</span>
+                        <input id="friendName" type="text" placeholder="Ej. Toni">
+                    </label>
+                    <label>
+                        <span>Codigo del grupo</span>
+                        <input id="groupCode" type="text" placeholder="Ej. SOMONTES-24">
+                    </label>
+                </div>
+
+                <div class="action-row">
+                    <button class="button primary" id="joinGroupButton">Unirme al grupo</button>
+                    <button class="button secondary" id="createDemoButton">Crear grupo demo</button>
+                </div>
+
+                <div class="friend-strip" id="friendStrip"></div>
+            </section>
+
+            <section class="panel">
+                <div class="panel-head">
+                    <div>
+                        <p class="eyebrow">Plan de BBQ</p>
+                        <h2>Reserva y montaje</h2>
+                    </div>
+                </div>
+
+                <div class="form-grid">
+                    <label>
+                        <span>Fecha</span>
+                        <input id="bbqDate" type="date">
+                    </label>
+                    <label>
+                        <span>Adultos</span>
+                        <input id="adultsCount" type="number" min="0" placeholder="Ej. 12">
+                    </label>
+                    <label>
+                        <span>Ninos</span>
+                        <input id="childrenCount" type="number" min="0" placeholder="Ej. 6">
+                    </label>
+                </div>
+
+                <div class="form-grid">
+                    <label>
+                        <span>BBQ reservada(s)</span>
+                        <input id="bbqReserved" type="text" placeholder="Ej. BBQ 3 y 4">
+                    </label>
+                    <label>
+                        <span>Mesa(s)</span>
+                        <input id="tablesReserved" type="text" placeholder="Ej. Mesa 8 y 9">
+                    </label>
+                </div>
+
+                <label class="notes-field">
+                    <span>Notas del plan</span>
+                    <textarea id="planNotes" rows="3" placeholder="Hora de llegada, hielo, bebidas frias, etc."></textarea>
+                </label>
+
+                <div class="action-row">
+                    <button class="button primary" id="savePlanButton">Guardar plan</button>
+                </div>
+
+                <div class="summary-card" id="planSummary"></div>
+            </section>
+
+            <section class="panel">
+                <div class="panel-head split">
+                    <div>
+                        <p class="eyebrow">Lista de compra</p>
+                        <h2>Asignar quien compra cada cosa</h2>
+                    </div>
+                    <div class="total-badge" id="itemsCounter">0 items</div>
+                </div>
+
+                <div class="form-grid compact-grid add-item-grid">
+                    <label>
+                        <span>Nuevo item</span>
+                        <input id="newItemName" type="text" placeholder="Ej. Carbon vegetal">
+                    </label>
+                    <label>
+                        <span>Cantidad</span>
+                        <input id="newItemQty" type="text" placeholder="Ej. 4 bolsas">
+                    </label>
+                    <label>
+                        <span>Compra</span>
+                        <select id="newItemOwner"></select>
+                    </label>
+                </div>
+
+                <div class="action-row">
+                    <button class="button primary" id="addItemButton">Anadir item</button>
+                    <button class="button secondary" id="seedItemsButton">Cargar pack BBQ</button>
+                </div>
+
+                <div class="shopping-list" id="shoppingList"></div>
+            </section>
+
+            <section class="panel panel-glow">
+                <div class="panel-head split">
+                    <div>
+                        <p class="eyebrow">Reparto</p>
+                        <h2>Que compra cada amigo</h2>
+                    </div>
+                </div>
+                <div class="assignments-grid" id="assignmentsGrid"></div>
+            </section>
+
+            <section class="panel chat-panel">
+                <div class="panel-head split">
+                    <div>
+                        <p class="eyebrow">Chat BBQ</p>
+                        <h2>Hablad como en un mini WhatsApp</h2>
+                    </div>
+                    <div class="total-badge" id="messagesCounter">0 mensajes</div>
+                </div>
+
+                <div class="chat-thread" id="chatThread"></div>
+
+                <label class="notes-field">
+                    <span>Mensaje</span>
+                    <textarea id="chatMessage" rows="3" placeholder="Ej. Yo compro el carbon y tambien hielo."></textarea>
+                </label>
+
+                <div class="action-row">
+                    <button class="button primary" id="sendMessageButton">Enviar mensaje</button>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="config.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

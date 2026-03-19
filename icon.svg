@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#123f2a"/>
+      <stop offset="100%" stop-color="#071a11"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#d9ff72"/>
+      <stop offset="100%" stop-color="#7df2aa"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="120" fill="url(#bg)"/>
+  <circle cx="390" cy="116" r="78" fill="#d9ff72" fill-opacity="0.18"/>
+  <path d="M133 347c0-68 55-123 123-123s123 55 123 123" fill="none" stroke="url(#shine)" stroke-width="30" stroke-linecap="round"/>
+  <path d="M181 325h150" stroke="#ecfff3" stroke-width="24" stroke-linecap="round"/>
+  <path d="M221 160v82" stroke="#7df2aa" stroke-width="24" stroke-linecap="round"/>
+  <path d="M291 160v82" stroke="#7df2aa" stroke-width="24" stroke-linecap="round"/>
+  <text x="256" y="430" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="76" font-weight="700" fill="#ecfff3">BBQ</text>
+</svg>
