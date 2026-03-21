@@ -111,7 +111,7 @@ body::before {
 .hero-content {
     position: relative;
     z-index: 3;
-    padding-top: 408px;
+    padding-top: 442px;
     max-width: 34rem;
 }
 
@@ -136,33 +136,11 @@ body::before {
     color: var(--green-2);
 }
 
-.hero h1 {
-    margin: 0 0 8px;
-    font-size: clamp(3.2rem, 12vw, 5.4rem);
-    line-height: 0.92;
-    letter-spacing: -0.05em;
-    text-shadow: 0 10px 28px rgba(0, 0, 0, 0.38);
-}
-
 .hero-copy {
     max-width: 28rem;
     color: rgba(231, 244, 235, 0.88);
     font-size: 1.02rem;
     line-height: 1.62;
-}
-
-.hero-pills {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    margin-top: 22px;
-}
-
-.hero-pills span {
-    padding: 10px 14px;
-    border-radius: 999px;
-    background: rgba(236, 255, 243, 0.08);
-    border: 1px solid rgba(236, 255, 243, 0.12);
 }
 
 .hero-actions {
@@ -961,7 +939,7 @@ textarea {
     }
 
     .hero-content {
-        padding-top: 302px;
+        padding-top: 336px;
     }
 
     .form-grid,
