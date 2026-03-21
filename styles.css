@@ -598,9 +598,9 @@ textarea {
 }
 
 .shopping-item {
-    padding: 16px;
+    padding: 10px 12px;
     display: grid;
-    gap: 14px;
+    gap: 8px;
 }
 
 .shopping-group {
@@ -633,28 +633,48 @@ textarea {
 
 .shopping-group-list {
     display: grid;
-    gap: 10px;
+    gap: 8px;
 }
 
 .simplified-card {
     background: rgba(236, 255, 243, 0.07);
 }
 
-.shopping-owner-pill {
-    display: inline-flex;
+.shopping-row.compact-row {
+    display: flex;
     align-items: center;
-    min-height: 34px;
-    padding: 0 12px;
-    border-radius: 999px;
-    background: rgba(236, 255, 243, 0.07);
-    border: 1px solid rgba(125, 242, 170, 0.12);
-    color: var(--green-2);
-    font-size: 0.82rem;
-    font-weight: 800;
+    justify-content: space-between;
+    gap: 10px;
 }
 
 .simple-actions {
     align-items: center;
+}
+
+.compact-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: nowrap;
+}
+
+.compact-actions select {
+    min-width: 118px;
+    min-height: 36px;
+    padding: 0 10px;
+    border-radius: 12px;
+}
+
+.compact-action {
+    min-height: 36px;
+    padding: 0 10px;
+    border-radius: 12px;
+    font-size: 0.88rem;
+}
+
+.danger-action {
+    min-width: 36px;
+    justify-content: center;
 }
 
 .compact-empty {
@@ -683,6 +703,8 @@ textarea {
 
 .item-meta {
     color: var(--green-2);
+    font-size: 0.82rem;
+    line-height: 1.25;
 }
 
 .shopping-title-wrap,
@@ -693,13 +715,41 @@ textarea {
     gap: 10px;
 }
 
+.compact-title-wrap {
+    gap: 8px;
+    min-width: 0;
+}
+
+.compact-title-wrap > div {
+    min-width: 0;
+}
+
+.shopping-title-line {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 0;
+}
+
+.shopping-title-line strong {
+    font-size: 0.98rem;
+    line-height: 1.15;
+}
+
+.shopping-owner-inline {
+    color: var(--green-2);
+    font-size: 0.8rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
 .item-icon {
     display: inline-grid;
     place-items: center;
-    width: 36px;
-    height: 36px;
-    border-radius: 12px;
-    font-size: 1.05rem;
+    width: 30px;
+    height: 30px;
+    border-radius: 10px;
+    font-size: 0.92rem;
     background: rgba(236, 255, 243, 0.08);
     border: 1px solid rgba(125, 242, 170, 0.12);
     flex: 0 0 auto;
@@ -1024,6 +1074,14 @@ textarea {
     .panel-head,
     .shopping-top {
         flex-direction: column;
+    }
+
+    .compact-actions {
+        flex-wrap: wrap;
+    }
+
+    .shopping-title-line {
+        flex-wrap: wrap;
     }
 
     .app-nav {

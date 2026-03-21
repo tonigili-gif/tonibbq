@@ -485,6 +485,29 @@ function getAllowedViews() {
     return ["group", "plan", "shopping", "chat", "summary"];
 }
 
+function getCurrentPlanContext() {
+    const archived = getSelectedArchivedPlan();
+    if (archived && uiState.currentView !== "summary") {
+        return {
+            plan: archived.plan,
+            friends: archived.friends,
+            items: archived.items.filter((item) => !item.deletedAt),
+            messages: archived.messages.filter((message) => !message.deletedAt),
+            archived: true,
+            archivedAt: archived.archivedAt
+        };
+    }
+
+    return {
+        plan: state.plan,
+        friends: state.friends,
+        items: getActiveItems(),
+        messages: getActiveMessages(),
+        archived: false,
+        archivedAt: ""
+    };
+}
+
 function renderSetupGuide() {
     const steps = [
         {
@@ -612,18 +635,32 @@ function renderGroup() {
 }
 
 function renderPlan() {
-    const dateText = state.plan.date ? formatDate(state.plan.date) : "Sin fecha";
+    const context = getCurrentPlanContext();
+    const dateText = context.plan.date ? formatDate(context.plan.date) : "Sin fecha";
     const syncText = state.lastSyncedAt ? `Ultima sync: ${formatTime(state.lastSyncedAt)}` : "Sin sincronizar";
     elements.planSummary.innerHTML = `
         <strong>${dateText}</strong><br>
-        Estado: ${escapeHtml(state.plan.date ? "Activo" : "Pendiente de crear")}<br>
-        Adultos: ${escapeHtml(state.plan.adults || "0")}<br>
-        Ninos: ${escapeHtml(state.plan.children || "0")}<br>
-        ${renderPlanBadge("bbq", "BBQ reservada(s)", state.plan.bbqReserved || "Pendiente")}<br>
-        Mesa(s): ${escapeHtml(state.plan.tablesReserved || "Pendiente")}<br>
-        Notas: ${escapeHtml(state.plan.notes || "Sin notas todavia")}<br>
+        Estado: ${escapeHtml(context.archived ? `Archivado desde ${formatDateTime(context.archivedAt)}` : context.plan.date ? "Activo" : "Pendiente de crear")}<br>
+        Adultos: ${escapeHtml(context.plan.adults || "0")}<br>
+        Ninos: ${escapeHtml(context.plan.children || "0")}<br>
+        ${renderPlanBadge("bbq", "BBQ reservada(s)", context.plan.bbqReserved || "Pendiente")}<br>
+        Mesa(s): ${escapeHtml(context.plan.tablesReserved || "Pendiente")}<br>
+        Notas: ${escapeHtml(context.plan.notes || "Sin notas todavia")}<br>
         ${escapeHtml(syncText)}
     `;
+
+    [
+        elements.bbqDate,
+        elements.adultsCount,
+        elements.childrenCount,
+        elements.bbqReserved,
+        elements.tablesReserved,
+        elements.planNotes,
+        elements.savePlanButton
+    ].forEach((element) => {
+        if (!element) return;
+        element.disabled = context.archived;
+    });
 }
 
 function renderArchivedPlans() {
@@ -665,7 +702,7 @@ function renderArchivedPlans() {
     document.querySelectorAll("[data-open-archived-plan]").forEach((button) => {
         button.addEventListener("click", () => {
             uiState.selectedArchivedPlanId = button.getAttribute("data-open-archived-plan") || "";
-            renderArchivedPlans();
+            setCurrentView("plan");
         });
     });
 
@@ -723,9 +760,10 @@ function renderArchivedPlans() {
 }
 
 function renderOwnerOptions() {
+    const context = getCurrentPlanContext();
     const options = ['<option value="">Sin asignar</option>']
         .concat(
-            state.friends.map(
+            context.friends.map(
                 (friend) => `<option value="${friend.id}">${escapeHtml(friend.name)}</option>`
             )
         )
@@ -735,7 +773,8 @@ function renderOwnerOptions() {
 }
 
 function renderItems() {
-    const activeItems = getActiveItems();
+    const context = getCurrentPlanContext();
+    const activeItems = context.items;
     const visibleItems = filterItemsByView(activeItems);
     const pendingUnassigned = activeItems.filter((item) => !item.completedAt && !item.ownerId);
     const pendingAssigned = activeItems.filter((item) => !item.completedAt && item.ownerId);
@@ -817,10 +856,12 @@ function renderArchivedMessage(message, friends) {
 }
 
 function renderShoppingItemCard(item) {
-    const owner = state.friends.find((friend) => friend.id === item.ownerId);
+    const context = getCurrentPlanContext();
+    const owner = context.friends.find((friend) => friend.id === item.ownerId);
+    const isArchived = context.archived;
     const ownerOptions = ['<option value="">Sin asignar</option>']
         .concat(
-            state.friends.map(
+            context.friends.map(
                 (friend) => `
                     <option value="${friend.id}" ${friend.id === item.ownerId ? "selected" : ""}>
                         ${escapeHtml(friend.name)}
@@ -859,23 +900,23 @@ function renderShoppingItemCard(item) {
 
     return `
         <article class="shopping-item simplified-card ${item.completedAt ? "is-done" : ""}">
-            <div class="shopping-top">
-                <div class="shopping-title-wrap">
+            <div class="shopping-row compact-row">
+                <div class="shopping-title-wrap compact-title-wrap">
                     ${renderItemIcon(item.name)}
                     <div>
-                        <strong>${escapeHtml(item.name)}</strong>
+                        <div class="shopping-title-line">
+                            <strong>${escapeHtml(item.name)}</strong>
+                            <span class="shopping-owner-inline">${owner ? escapeHtml(owner.name) : "Sin asignar"}</span>
+                        </div>
                         <div class="item-meta">${escapeHtml(item.quantity || "Sin detalle")}</div>
                     </div>
                 </div>
-                <div class="shopping-owner-pill">${owner ? escapeHtml(owner.name) : "Sin asignar"}</div>
             </div>
-            <div class="shopping-actions simple-actions">
-                <select data-owner-select="${item.id}">${ownerOptions}</select>
-                <button class="inline-action" type="button" data-toggle-done="${item.id}">
-                    ${item.completedAt ? "Reabrir" : "Marcar comprado"}
-                </button>
-                <button class="inline-action" type="button" data-edit-item="${item.id}">Editar</button>
-                <button class="inline-button" type="button" data-delete-item="${item.id}">Eliminar</button>
+            <div class="shopping-actions compact-actions">
+                ${item.completedAt ? "" : `<select data-owner-select="${item.id}">${ownerOptions}</select>`}
+                ${item.completedAt || isArchived ? "" : `<button class="inline-action compact-action" type="button" data-toggle-done="${item.id}">Comprado</button>`}
+                ${isArchived ? "" : `<button class="inline-action compact-action" type="button" data-edit-item="${item.id}">Editar</button>`}
+                ${isArchived ? "" : `<button class="inline-button compact-action danger-action" type="button" data-delete-item="${item.id}">X</button>`}
             </div>
         </article>
     `;
@@ -936,6 +977,9 @@ function getItemIcon(itemName) {
 }
 
 function wireShoppingActions() {
+    if (getCurrentPlanContext().archived) {
+        return;
+    }
     document.querySelectorAll("[data-owner-select]").forEach((select) => {
         select.addEventListener("change", async (event) => {
             const itemId = event.target.getAttribute("data-owner-select");
@@ -980,14 +1024,15 @@ function wireShoppingActions() {
 }
 
 function renderAssignments() {
-    if (!state.friends.length) {
+    const context = getCurrentPlanContext();
+    if (!context.friends.length) {
         elements.assignmentsGrid.innerHTML = '<div class="empty-state">Anade amigos al grupo para repartir la compra.</div>';
         return;
     }
 
-    const activeItems = getActiveItems();
+    const activeItems = context.items;
 
-    elements.assignmentsGrid.innerHTML = state.friends
+    elements.assignmentsGrid.innerHTML = context.friends
         .slice()
         .sort((left, right) => left.name.localeCompare(right.name, "es"))
         .map((friend) => {
@@ -1031,8 +1076,13 @@ function renderAssignments() {
 }
 
 function renderMessages() {
-    const activeMessages = getActiveMessages();
+    const context = getCurrentPlanContext();
+    const activeMessages = context.messages;
     elements.messagesCounter.textContent = `${activeMessages.length} mensajes`;
+    elements.chatMessage.disabled = context.archived;
+    elements.chatPhotoInput.disabled = context.archived;
+    elements.sendPhotoButton.disabled = context.archived;
+    elements.sendMessageButton.disabled = context.archived;
 
     if (!activeMessages.length) {
         elements.chatThread.innerHTML = '<div class="empty-state">Aun no hay mensajes. Usa ToniChat para coordinar compras y llegada.</div>';
@@ -1041,7 +1091,7 @@ function renderMessages() {
 
     elements.chatThread.innerHTML = activeMessages
         .map((message) => {
-            const author = state.friends.find((friend) => friend.id === message.authorId);
+            const author = context.friends.find((friend) => friend.id === message.authorId);
             const isMine = message.authorId === state.currentFriendId;
             return `
                 <article class="chat-bubble ${isMine ? "mine" : "theirs"}">
@@ -1057,7 +1107,9 @@ function renderMessages() {
         .join("");
 
     elements.chatThread.scrollTop = elements.chatThread.scrollHeight;
-    lastSeenMessageId = getLastSeenMessageId(activeMessages);
+    if (!context.archived) {
+        lastSeenMessageId = getLastSeenMessageId(activeMessages);
+    }
 }
 
 function renderLocks() {
