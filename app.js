@@ -35,26 +35,32 @@ const initialState = {
 const uiState = {
     itemFilter: "all",
     editingItemId: "",
-    deferredInstallPrompt: null
+    deferredInstallPrompt: null,
+    archivingInFlight: false
 };
 
-const SUPABASE_CONFIG = window.TONIBBQ_CONFIG || {};
+const APP_CONFIG = window.TONIBBQ_CONFIG || {};
+const LOCAL_API_BASE = String(APP_CONFIG.backendUrl || "").replace(/\/$/, "");
+const dataProvider = LOCAL_API_BASE
+    ? "local-api"
+    : APP_CONFIG.supabaseUrl && APP_CONFIG.supabaseAnonKey && window.supabase && typeof window.supabase.createClient === "function"
+        ? "supabase"
+        : "demo";
 const hasSupabaseConfig = Boolean(
-    SUPABASE_CONFIG.supabaseUrl &&
-    SUPABASE_CONFIG.supabaseAnonKey &&
-    window.supabase &&
-    typeof window.supabase.createClient === "function"
+    dataProvider === "supabase"
 );
 
 const supabaseClient = hasSupabaseConfig
     ? window.supabase.createClient(
-        SUPABASE_CONFIG.supabaseUrl,
-        SUPABASE_CONFIG.supabaseAnonKey
+        APP_CONFIG.supabaseUrl,
+        APP_CONFIG.supabaseAnonKey
     )
     : null;
 
 const state = loadState();
 let activeChannel = null;
+let localPollTimer = 0;
+let localRevision = 0;
 let lastSeenMessageId = getLastSeenMessageId(state.messages);
 
 const elements = {
@@ -83,6 +89,8 @@ const elements = {
     syncStatus: document.getElementById("syncStatus"),
     chatThread: document.getElementById("chatThread"),
     chatMessage: document.getElementById("chatMessage"),
+    chatPhotoInput: document.getElementById("chatPhotoInput"),
+    sendPhotoButton: document.getElementById("sendPhotoButton"),
     sendMessageButton: document.getElementById("sendMessageButton"),
     messagesCounter: document.getElementById("messagesCounter"),
     setupGuide: document.getElementById("setupGuide"),
@@ -124,6 +132,13 @@ function bindEvents() {
         withButtonState(elements.sendMessageButton, "Enviando...", sendMessage);
     });
 
+    elements.sendPhotoButton.addEventListener("click", () => {
+        if (!ensurePlanEditable("enviar fotos")) {
+            return;
+        }
+        elements.chatPhotoInput.click();
+    });
+
     elements.shoppingFilters.querySelectorAll("[data-filter]").forEach((button) => {
         button.addEventListener("click", () => {
             uiState.itemFilter = button.getAttribute("data-filter") || "all";
@@ -136,6 +151,15 @@ function bindEvents() {
             event.preventDefault();
             elements.sendMessageButton.click();
         }
+    });
+
+    elements.chatPhotoInput.addEventListener("change", async (event) => {
+        const file = event.target.files && event.target.files[0];
+        if (!file) return;
+        await withButtonState(elements.sendPhotoButton, "Procesando foto...", async () => {
+            await sendPhotoMessage(file);
+        });
+        event.target.value = "";
     });
 
     elements.installAppButton.addEventListener("click", installPwa);
@@ -184,17 +208,22 @@ async function initializeApp() {
     setupInstallPrompt();
     registerServiceWorker();
 
-    if (!hasSupabaseConfig) {
-        updateSyncBadge("Modo demo local. Configura Supabase para compartir.", "is-offline");
-        showToast("Modo local", "La interfaz funciona, pero falta conectar Supabase para compartirla.", "error");
+    if (dataProvider === "demo") {
+        updateSyncBadge("Modo demo local. Configura backend local o Supabase para compartir.", "is-offline");
+        showToast("Modo local", "La interfaz funciona, pero falta conectar un backend para compartirla.", "error");
         return;
     }
 
-    updateSyncBadge("Supabase conectado", "");
+    if (dataProvider === "local-api") {
+        updateSyncBadge("Backend local conectado", "");
+    } else {
+        updateSyncBadge("Supabase conectado", "");
+    }
 
     if (state.groupCode) {
         await loadRemoteGroup(state.groupCode);
         subscribeToGroup(state.groupCode);
+        await maybeArchiveExpiredPlan();
     }
 }
 
@@ -273,6 +302,10 @@ async function savePlan() {
         return;
     }
 
+    if (!ensurePlanEditable("guardar el plan")) {
+        return;
+    }
+
     state.plan = normalizePlan({
         date: elements.bbqDate.value,
         adults: elements.adultsCount.value,
@@ -280,16 +313,30 @@ async function savePlan() {
         bbqReserved: elements.bbqReserved.value.trim(),
         tablesReserved: elements.tablesReserved.value.trim(),
         notes: elements.planNotes.value.trim(),
+        archivedAt: "",
         updatedAt: nowIso()
     });
     persistAndRender();
-    await syncGroup("updated the plan");
-    showToast("Plan guardado", "La fecha y la reserva de la BBQ han quedado actualizadas.", "success");
+    const autoArchived = await maybeArchiveExpiredPlan();
+    if (!autoArchived) {
+        await syncGroup("updated the plan");
+    }
+    showToast(
+        autoArchived ? "Plan archivado" : "Plan guardado",
+        autoArchived
+            ? "La fecha ya habia pasado, asi que la BBQ queda archivada en modo lectura."
+            : "La fecha y la reserva de la BBQ han quedado actualizadas.",
+        "success"
+    );
 }
 
 async function addItem() {
     if (!hasGroup()) {
         showToast("Sin grupo activo", "Unete a un grupo antes de anadir compras.", "error");
+        return;
+    }
+
+    if (!ensurePlanEditable("anadir compras")) {
         return;
     }
 
@@ -322,6 +369,10 @@ async function addItem() {
 async function seedItems() {
     if (!hasGroup()) {
         showToast("Sin grupo activo", "Crea o entra en un grupo antes de cargar el pack.", "error");
+        return;
+    }
+
+    if (!ensurePlanEditable("cargar el pack")) {
         return;
     }
 
@@ -429,6 +480,9 @@ function getOverviewNote(pendingItems, unassignedItems) {
     if (!hasGroup()) {
         return "Empieza por unirte al grupo o cargar la demo para activar el resto de la app.";
     }
+    if (hasArchivedPlan()) {
+        return "La fecha de esta BBQ ya ha pasado y el grupo ha quedado archivado automaticamente en modo lectura.";
+    }
     if (!isPlanReady()) {
         return "Siguiente paso recomendado: completa el plan con fecha, asistentes, BBQs y mesas.";
     }
@@ -445,7 +499,10 @@ function getOverviewNote(pendingItems, unassignedItems) {
 }
 
 function renderGroup() {
-    elements.activeGroupChip.textContent = state.groupCode || "Sin grupo";
+    elements.activeGroupChip.textContent = hasArchivedPlan()
+        ? `${state.groupCode || "Sin grupo"} · Archivado`
+        : (state.groupCode || "Sin grupo");
+    elements.activeGroupChip.classList.toggle("is-archived", hasArchivedPlan());
 
     if (!state.friends.length) {
         elements.friendStrip.innerHTML = '<div class="empty-state">Todavia no hay amigos en este grupo. Puedes arrancar con Crear grupo demo.</div>';
@@ -475,6 +532,7 @@ function renderPlan() {
     const syncText = state.lastSyncedAt ? `Ultima sync: ${formatTime(state.lastSyncedAt)}` : "Sin sincronizar";
     elements.planSummary.innerHTML = `
         <strong>${dateText}</strong><br>
+        Estado: ${escapeHtml(hasArchivedPlan() ? `Archivado desde ${formatDateTime(state.plan.archivedAt)}` : state.plan.date ? "Activo" : "Pendiente de crear")}<br>
         Adultos: ${escapeHtml(state.plan.adults || "0")}<br>
         Ninos: ${escapeHtml(state.plan.children || "0")}<br>
         BBQ reservada(s): ${escapeHtml(state.plan.bbqReserved || "Pendiente")}<br>
@@ -694,6 +752,7 @@ function renderMessages() {
                         <span>${escapeHtml(author ? author.name : "Amigo")}</span>
                         <span>${escapeHtml(formatChatDate(message.createdAt))}</span>
                     </div>
+                    ${message.photoDataUrl ? `<img class="chat-photo" src="${message.photoDataUrl}" alt="Foto enviada en ToniChat">` : ""}
                     <div class="chat-text">${escapeHtml(message.text)}</div>
                 </article>
             `;
@@ -707,6 +766,16 @@ function renderMessages() {
 function renderLocks() {
     document.querySelectorAll("[data-requires-group]").forEach((panel) => {
         panel.classList.toggle("is-locked", !hasGroup());
+        const title = panel.querySelector(".panel-lock strong");
+        const body = panel.querySelector(".panel-lock span");
+        if (!title || !body) {
+            return;
+        }
+
+        if (!hasGroup()) {
+            title.textContent = "Unete primero a un grupo";
+            body.textContent = "Despues podras editar compras, plan y chat.";
+        }
     });
 }
 
@@ -715,6 +784,9 @@ function renderInstallButton() {
 }
 
 async function updateItemOwner(itemId, ownerId) {
+    if (!ensurePlanEditable("reasignar compras")) {
+        return;
+    }
     const item = state.items.find((entry) => entry.id === itemId);
     if (!item) return;
     item.ownerId = ownerId;
@@ -725,6 +797,9 @@ async function updateItemOwner(itemId, ownerId) {
 }
 
 async function deleteItem(itemId) {
+    if (!ensurePlanEditable("eliminar compras")) {
+        return;
+    }
     const item = state.items.find((entry) => entry.id === itemId);
     if (!item) return;
     item.deletedAt = nowIso();
@@ -736,6 +811,9 @@ async function deleteItem(itemId) {
 }
 
 async function toggleItemDone(itemId) {
+    if (!ensurePlanEditable("actualizar compras")) {
+        return;
+    }
     const item = state.items.find((entry) => entry.id === itemId);
     if (!item) return;
     item.completedAt = item.completedAt ? "" : nowIso();
@@ -750,6 +828,9 @@ async function toggleItemDone(itemId) {
 }
 
 async function saveEditedItem(itemId) {
+    if (!ensurePlanEditable("editar compras")) {
+        return;
+    }
     const item = state.items.find((entry) => entry.id === itemId);
     if (!item) return;
 
@@ -787,6 +868,10 @@ async function sendMessage() {
         return;
     }
 
+    if (!ensurePlanEditable("enviar mensajes")) {
+        return;
+    }
+
     maybeRequestNotificationPermission();
 
     state.messages.push(normalizeMessage({
@@ -802,6 +887,43 @@ async function sendMessage() {
     persistAndRender();
     await syncGroup("sent a chat message");
     showToast("Mensaje enviado", "ToniChat se ha actualizado para todos.", "success");
+}
+
+async function sendPhotoMessage(file) {
+    if (!hasGroup() || !state.currentFriendId) {
+        showToast("Sin grupo activo", "Unete primero a un grupo para usar ToniChat.", "error");
+        return;
+    }
+
+    if (!ensurePlanEditable("enviar fotos")) {
+        return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+        showToast("Formato no valido", "Solo puedes enviar imagenes al chat.", "error");
+        return;
+    }
+
+    maybeRequestNotificationPermission();
+
+    const compressedDataUrl = await compressImageFile(file);
+    const caption = elements.chatMessage.value.trim();
+    const timestamp = nowIso();
+
+    state.messages.push(normalizeMessage({
+        id: createId(),
+        authorId: state.currentFriendId,
+        text: caption || "Foto compartida",
+        photoDataUrl: compressedDataUrl,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        deletedAt: ""
+    }));
+
+    elements.chatMessage.value = "";
+    persistAndRender();
+    await syncGroup("sent a photo message");
+    showToast("Foto enviada", "La imagen ya aparece en ToniChat.", "success");
 }
 
 function getActiveItems() {
@@ -832,6 +954,10 @@ function hasGroup() {
     return Boolean(state.groupCode);
 }
 
+function hasArchivedPlan() {
+    return Boolean(state.plan.archivedAt);
+}
+
 function isPlanReady() {
     return Boolean(
         state.plan.date &&
@@ -840,6 +966,10 @@ function isPlanReady() {
         state.plan.bbqReserved &&
         state.plan.tablesReserved
     );
+}
+
+function ensurePlanEditable(actionLabel) {
+    return true;
 }
 
 function findFriendByName(name) {
@@ -863,55 +993,75 @@ async function syncGroup(reason) {
         return;
     }
 
-    if (!hasSupabaseConfig) {
+    if (dataProvider === "demo") {
         persistAndRender();
-        updateSyncBadge("Modo demo local. Falta Supabase.", "is-offline");
+        updateSyncBadge("Modo demo local. Falta backend compartido.", "is-offline");
         return;
     }
 
     try {
-        updateSyncBadge("Sincronizando con Supabase...", "");
+        updateSyncBadge(
+            dataProvider === "local-api" ? "Sincronizando con servidor local..." : "Sincronizando con Supabase...",
+            ""
+        );
 
         const localGroup = buildGroupPayload();
         const remoteRow = await fetchRemoteGroupRow(state.groupCode);
         const remoteGroup = remoteRow ? rowToGroup(remoteRow) : blankGroupPayload(state.groupCode);
         const mergedGroup = mergeGroupData(localGroup, remoteGroup);
 
-        const row = {
-            code: state.groupCode,
-            plan: mergedGroup.plan,
-            friends: mergedGroup.friends,
-            items: mergedGroup.items,
-            messages: mergedGroup.messages,
-            updated_by: state.clientId,
-            updated_reason: reason,
-            updated_at: nowIso()
-        };
+        let savedRow;
+        if (dataProvider === "local-api") {
+            savedRow = await upsertLocalGroup(state.groupCode, mergedGroup, reason);
+        } else {
+            const row = {
+                code: state.groupCode,
+                plan: mergedGroup.plan,
+                friends: mergedGroup.friends,
+                items: mergedGroup.items,
+                messages: mergedGroup.messages,
+                updated_by: state.clientId,
+                updated_reason: reason,
+                updated_at: nowIso()
+            };
 
-        const { data, error } = await supabaseClient
-            .from("bbq_groups")
-            .upsert(row, { onConflict: "code" })
-            .select()
-            .single();
+            const { data, error } = await supabaseClient
+                .from("bbq_groups")
+                .upsert(row, { onConflict: "code" })
+                .select()
+                .single();
 
-        if (error) {
-            throw error;
+            if (error) {
+                throw error;
+            }
+
+            savedRow = data;
         }
 
-        applyGroupRow(data);
+        applyGroupRow(savedRow);
         state.lastSyncedAt = nowIso();
         persistAndRender();
-        updateSyncBadge(`En linea con ${state.groupCode}`, "");
+        updateSyncBadge(
+            dataProvider === "local-api" ? `En linea con servidor local: ${state.groupCode}` : `En linea con ${state.groupCode}`,
+            ""
+        );
     } catch (error) {
         console.error(error);
         persistAndRender();
-        updateSyncBadge("Error conectando con Supabase", "is-error");
-        showToast("No se pudo sincronizar", "Tus cambios siguen en este dispositivo. Vuelve a intentarlo en un momento.", "error");
+        updateSyncBadge(
+            dataProvider === "local-api" ? "Error conectando con el servidor local" : "Error conectando con Supabase",
+            "is-error"
+        );
+        showToast(
+            "No se pudo sincronizar",
+            "Tus cambios siguen en este dispositivo. Vuelve a intentarlo en un momento.",
+            "error"
+        );
     }
 }
 
 async function loadRemoteGroup(groupCode) {
-    if (!hasSupabaseConfig || !groupCode) {
+    if (dataProvider === "demo" || !groupCode) {
         return;
     }
 
@@ -927,12 +1077,36 @@ async function loadRemoteGroup(groupCode) {
         }
     } catch (error) {
         console.error(error);
-        updateSyncBadge("No se pudo leer Supabase", "is-error");
-        showToast("Error de lectura", "No hemos podido cargar el grupo desde Supabase.", "error");
+        updateSyncBadge(
+            dataProvider === "local-api" ? "No se pudo leer el servidor local" : "No se pudo leer Supabase",
+            "is-error"
+        );
+        showToast(
+            "Error de lectura",
+            dataProvider === "local-api"
+                ? "No hemos podido cargar el grupo desde el servidor local."
+                : "No hemos podido cargar el grupo desde Supabase.",
+            "error"
+        );
     }
 }
 
 async function fetchRemoteGroupRow(groupCode) {
+    if (dataProvider === "local-api") {
+        const response = await fetch(`${LOCAL_API_BASE}/api/groups/${encodeURIComponent(groupCode)}`, {
+            headers: {
+                Accept: "application/json"
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error(`Local API error: ${response.status}`);
+        }
+
+        const record = await response.json();
+        return record && record.group ? record : null;
+    }
+
     const { data, error } = await supabaseClient
         .from("bbq_groups")
         .select("*")
@@ -946,8 +1120,56 @@ async function fetchRemoteGroupRow(groupCode) {
     return data;
 }
 
+async function upsertLocalGroup(groupCode, group, reason) {
+    const response = await fetch(`${LOCAL_API_BASE}/api/groups/${encodeURIComponent(groupCode)}`, {
+        method: "PUT",
+        headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json"
+        },
+        body: JSON.stringify({
+            group,
+            updatedBy: state.clientId,
+            updatedReason: reason
+        })
+    });
+
+    if (!response.ok) {
+        throw new Error(`Local API error: ${response.status}`);
+    }
+
+    return response.json();
+}
+
 function subscribeToGroup(groupCode) {
-    if (!hasSupabaseConfig || !groupCode) {
+    if (dataProvider === "demo" || !groupCode) {
+        return;
+    }
+
+    if (localPollTimer) {
+        window.clearInterval(localPollTimer);
+        localPollTimer = 0;
+    }
+    localRevision = 0;
+
+    if (dataProvider === "local-api") {
+        localPollTimer = window.setInterval(async () => {
+            try {
+                const nextRow = await fetchRemoteGroupRow(groupCode);
+                const nextRevision = Number(nextRow && nextRow.revision ? nextRow.revision : 0);
+                if (!nextRow || nextRevision <= localRevision) {
+                    return;
+                }
+                applyGroupRow(nextRow);
+                state.lastSyncedAt = nowIso();
+                persistAndRender();
+                updateSyncBadge(`Actualizado desde servidor local: ${groupCode}`, "");
+            } catch (error) {
+                console.error(error);
+                updateSyncBadge("Error leyendo el servidor local", "is-error");
+            }
+        }, 3000);
+        updateSyncBadge(`Sync local activa: ${groupCode}`, "");
         return;
     }
 
@@ -987,9 +1209,11 @@ function applyGroupRow(row) {
 
     const previousLastMessageId = getLastSeenMessageId(getActiveMessages());
     const normalizedRow = normalizeGroupRow(row);
+    localRevision = Math.max(localRevision, Number(row.revision || 0));
 
     state.groupCode = normalizedRow.code || state.groupCode;
     state.plan = normalizedRow.plan;
+    state.archivedPlans = normalizedRow.archivedPlans;
     state.friends = normalizedRow.friends;
     state.items = normalizedRow.items;
     state.messages = normalizedRow.messages;
@@ -1003,12 +1227,14 @@ function applyGroupRow(row) {
     }
 
     notifyForIncomingMessage(previousLastMessageId);
+    void maybeArchiveExpiredPlan();
 }
 
 function buildGroupPayload() {
     return {
         groupCode: state.groupCode,
         plan: normalizePlan(state.plan),
+        archivedPlans: state.archivedPlans.map(normalizeArchivedPlan),
         friends: state.friends.map(normalizeFriend),
         items: state.items.map(normalizeItem),
         messages: state.messages.map(normalizeMessage)
@@ -1020,6 +1246,7 @@ function rowToGroup(row) {
     return {
         groupCode: normalized.code,
         plan: normalized.plan,
+        archivedPlans: normalized.archivedPlans,
         friends: normalized.friends,
         items: normalized.items,
         messages: normalized.messages
@@ -1118,6 +1345,7 @@ function normalizeClientState(candidate) {
         clientId: String(candidate.clientId || createId()),
         lastSyncedAt: String(candidate.lastSyncedAt || ""),
         plan: normalizePlan(candidate.plan || {}),
+        archivedPlans: Array.isArray(candidate.archivedPlans) ? candidate.archivedPlans.map(normalizeArchivedPlan) : [],
         friends: Array.isArray(candidate.friends) ? candidate.friends.map(normalizeFriend) : [],
         items: Array.isArray(candidate.items) ? candidate.items.map(normalizeItem) : [],
         messages: Array.isArray(candidate.messages) ? candidate.messages.map(normalizeMessage) : []
@@ -1125,12 +1353,16 @@ function normalizeClientState(candidate) {
 }
 
 function normalizeGroupRow(row) {
+    const source = row && row.group ? row.group : row;
     return {
-        code: normalizeGroupCode(row.code || row.groupCode || ""),
-        plan: normalizePlan(row.plan || {}),
-        friends: Array.isArray(row.friends) ? dedupeFriends(row.friends.map(normalizeFriend)) : [],
-        items: Array.isArray(row.items) ? dedupeById(row.items.map(normalizeItem)) : [],
-        messages: Array.isArray(row.messages) ? dedupeById(row.messages.map(normalizeMessage)) : []
+        code: normalizeGroupCode(source.code || source.groupCode || ""),
+        plan: normalizePlan(source.plan || {}),
+        archivedPlans: Array.isArray(source.archivedPlans || source.archived_plans)
+            ? dedupeArchivedPlans((source.archivedPlans || source.archived_plans).map(normalizeArchivedPlan))
+            : [],
+        friends: Array.isArray(source.friends) ? dedupeFriends(source.friends.map(normalizeFriend)) : [],
+        items: Array.isArray(source.items) ? dedupeById(source.items.map(normalizeItem)) : [],
+        messages: Array.isArray(source.messages) ? dedupeById(source.messages.map(normalizeMessage)) : []
     };
 }
 
@@ -1142,6 +1374,7 @@ function blankPlan() {
         bbqReserved: "",
         tablesReserved: "",
         notes: "",
+        archivedAt: "",
         updatedAt: ""
     };
 }
@@ -1150,6 +1383,7 @@ function blankGroupPayload(groupCode) {
     return {
         groupCode,
         plan: blankPlan(),
+        archivedPlans: [],
         friends: [],
         items: [],
         messages: []
@@ -1165,6 +1399,23 @@ function normalizePlan(plan) {
         tablesReserved: String(plan.tablesReserved || ""),
         notes: String(plan.notes || ""),
         updatedAt: String(plan.updatedAt || "")
+    };
+}
+
+function normalizeArchivedPlan(entry) {
+    return {
+        id: String(entry.id || createId()),
+        archivedAt: String(entry.archivedAt || nowIso()),
+        updatedAt: String(entry.updatedAt || entry.archivedAt || nowIso()),
+        sourceDate: String(entry.sourceDate || entry.plan?.date || ""),
+        friendCount: Number(entry.friendCount || 0),
+        pendingItems: Number(entry.pendingItems || 0),
+        completedItems: Number(entry.completedItems || 0),
+        messageCount: Number(entry.messageCount || 0),
+        plan: normalizePlan(entry.plan || {}),
+        friends: Array.isArray(entry.friends) ? entry.friends.map(normalizeFriend) : [],
+        items: Array.isArray(entry.items) ? entry.items.map(normalizeItem) : [],
+        messages: Array.isArray(entry.messages) ? entry.messages.map(normalizeMessage) : []
     };
 }
 
@@ -1194,6 +1445,7 @@ function normalizeMessage(message) {
         id: String(message.id || createId()),
         authorId: String(message.authorId || ""),
         text: String(message.text || ""),
+        photoDataUrl: String(message.photoDataUrl || ""),
         createdAt: String(message.createdAt || nowIso()),
         updatedAt: String(message.updatedAt || message.createdAt || nowIso()),
         deletedAt: String(message.deletedAt || "")
@@ -1224,10 +1476,22 @@ function dedupeFriends(friends) {
     return Array.from(byName.values()).sort((left, right) => left.name.localeCompare(right.name, "es"));
 }
 
+function dedupeArchivedPlans(records) {
+    const map = new Map();
+    records.forEach((record) => {
+        const current = map.get(record.id);
+        if (!current || String(record.updatedAt) >= String(current.updatedAt)) {
+            map.set(record.id, record);
+        }
+    });
+    return Array.from(map.values()).sort((left, right) => String(right.archivedAt).localeCompare(String(left.archivedAt)));
+}
+
 function mergeGroupData(localGroup, remoteGroup) {
     return {
         groupCode: localGroup.groupCode || remoteGroup.groupCode || "",
         plan: mergeByUpdatedAt(normalizePlan(localGroup.plan), normalizePlan(remoteGroup.plan)),
+        archivedPlans: dedupeArchivedPlans([].concat(remoteGroup.archivedPlans || [], localGroup.archivedPlans || []).map(normalizeArchivedPlan)),
         friends: dedupeFriends([].concat(remoteGroup.friends || [], localGroup.friends || [])),
         items: mergeRecordCollections(remoteGroup.items || [], localGroup.items || [], normalizeItem),
         messages: mergeRecordCollections(remoteGroup.messages || [], localGroup.messages || [], normalizeMessage)
@@ -1247,6 +1511,26 @@ function mergeRecordCollections(remoteRecords, localRecords, normalizeFn) {
 
 function mergeByUpdatedAt(left, right) {
     return String(left.updatedAt || "") >= String(right.updatedAt || "") ? left : right;
+}
+
+async function maybeArchiveExpiredPlan() {
+    if (uiState.archivingInFlight || !hasGroup() || !state.plan.date || hasArchivedPlan() || !hasDatePassed(state.plan.date)) {
+        return false;
+    }
+
+    uiState.archivingInFlight = true;
+    try {
+        state.plan.archivedAt = nowIso();
+        state.plan.updatedAt = state.plan.archivedAt;
+        persistAndRender();
+        if (dataProvider !== "demo") {
+            await syncGroup("auto-archived expired plan");
+        }
+        showToast("Plan archivado", "La fecha de la BBQ ya ha pasado y el grupo queda en modo lectura.", "success");
+        return true;
+    } finally {
+        uiState.archivingInFlight = false;
+    }
 }
 
 function normalizeGroupCode(value) {
@@ -1270,6 +1554,13 @@ function cloneInitialState() {
 
 function nowIso() {
     return new Date().toISOString();
+}
+
+function hasDatePassed(dateString) {
+    const today = new Date();
+    const current = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
+    const target = new Date(`${dateString}T00:00:00Z`);
+    return target < current;
 }
 
 function formatDate(dateString) {
@@ -1297,6 +1588,53 @@ function formatChatDate(dateString) {
         hour: "2-digit",
         minute: "2-digit"
     }).format(date);
+}
+
+function formatDateTime(dateString) {
+    const date = new Date(dateString);
+    return new Intl.DateTimeFormat("es-ES", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit"
+    }).format(date);
+}
+
+async function compressImageFile(file) {
+    const dataUrl = await readFileAsDataUrl(file);
+    const image = await loadImage(dataUrl);
+    const maxWidth = 1440;
+    const scale = Math.min(1, maxWidth / image.width);
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(image.width * scale));
+    canvas.height = Math.max(1, Math.round(image.height * scale));
+    const context = canvas.getContext("2d");
+
+    if (!context) {
+        return dataUrl;
+    }
+
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL("image/jpeg", 0.82);
+}
+
+function readFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(reader.error || new Error("No se pudo leer la imagen."));
+        reader.readAsDataURL(file);
+    });
+}
+
+function loadImage(src) {
+    return new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = () => reject(new Error("No se pudo procesar la imagen."));
+        image.src = src;
+    });
 }
 
 function getUpcomingSaturday() {

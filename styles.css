@@ -323,6 +323,11 @@ body::before {
     border: 1px solid rgba(125, 242, 170, 0.18);
 }
 
+.group-chip.is-archived {
+    color: #ffd27d;
+    border-color: rgba(255, 210, 125, 0.3);
+}
+
 .form-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -670,6 +675,16 @@ textarea {
     line-height: 1.6;
     white-space: pre-wrap;
     word-break: break-word;
+}
+
+.chat-photo {
+    display: block;
+    width: 100%;
+    max-width: 320px;
+    margin-bottom: 10px;
+    border-radius: 18px;
+    border: 1px solid rgba(125, 242, 170, 0.14);
+    object-fit: cover;
 }
 
 .empty-state {

@@ -1,4 +1,4 @@
-const CACHE_NAME = "tonibbq-shell-v1";
+const CACHE_NAME = "tonibbq-shell-v2";
 const APP_SHELL = [
     "./",
     "./index.html",
