@@ -36,7 +36,8 @@ const uiState = {
     itemFilter: "all",
     editingItemId: "",
     deferredInstallPrompt: null,
-    archivingInFlight: false
+    archivingInFlight: false,
+    currentView: "group"
 };
 
 const APP_CONFIG = window.TONIBBQ_CONFIG || {};
@@ -69,6 +70,7 @@ const elements = {
     joinGroupButton: document.getElementById("joinGroupButton"),
     createDemoButton: document.getElementById("createDemoButton"),
     activeGroupChip: document.getElementById("activeGroupChip"),
+    appNav: document.getElementById("appNav"),
     friendStrip: document.getElementById("friendStrip"),
     bbqDate: document.getElementById("bbqDate"),
     adultsCount: document.getElementById("adultsCount"),
@@ -76,6 +78,7 @@ const elements = {
     bbqReserved: document.getElementById("bbqReserved"),
     tablesReserved: document.getElementById("tablesReserved"),
     planNotes: document.getElementById("planNotes"),
+    goToGroupButton: document.getElementById("goToGroupButton"),
     savePlanButton: document.getElementById("savePlanButton"),
     planSummary: document.getElementById("planSummary"),
     newItemName: document.getElementById("newItemName"),
@@ -83,6 +86,7 @@ const elements = {
     newItemOwner: document.getElementById("newItemOwner"),
     addItemButton: document.getElementById("addItemButton"),
     seedItemsButton: document.getElementById("seedItemsButton"),
+    goToChatButton: document.getElementById("goToChatButton"),
     shoppingList: document.getElementById("shoppingList"),
     assignmentsGrid: document.getElementById("assignmentsGrid"),
     itemsCounter: document.getElementById("itemsCounter"),
@@ -94,6 +98,8 @@ const elements = {
     sendMessageButton: document.getElementById("sendMessageButton"),
     messagesCounter: document.getElementById("messagesCounter"),
     setupGuide: document.getElementById("setupGuide"),
+    summarySection: document.getElementById("summarySection"),
+    overviewSection: document.getElementById("overviewSection"),
     overviewGrid: document.getElementById("overviewGrid"),
     overviewNote: document.getElementById("overviewNote"),
     shoppingFilters: document.getElementById("shoppingFilters"),
@@ -108,12 +114,23 @@ render();
 initializeApp();
 
 function bindEvents() {
+    elements.appNav.querySelectorAll("[data-view]").forEach((button) => {
+        button.addEventListener("click", () => {
+            const nextView = button.getAttribute("data-view") || "group";
+            setCurrentView(nextView);
+        });
+    });
+
     elements.joinGroupButton.addEventListener("click", () => {
         withButtonState(elements.joinGroupButton, "Entrando...", joinGroup);
     });
 
     elements.createDemoButton.addEventListener("click", () => {
         withButtonState(elements.createDemoButton, "Preparando demo...", createDemoGroup);
+    });
+
+    elements.goToGroupButton.addEventListener("click", () => {
+        setCurrentView("group");
     });
 
     elements.savePlanButton.addEventListener("click", () => {
@@ -126,6 +143,10 @@ function bindEvents() {
 
     elements.seedItemsButton.addEventListener("click", () => {
         withButtonState(elements.seedItemsButton, "Cargando pack...", seedItems);
+    });
+
+    elements.goToChatButton.addEventListener("click", () => {
+        setCurrentView("chat");
     });
 
     elements.sendMessageButton.addEventListener("click", () => {
@@ -257,6 +278,7 @@ async function joinGroup() {
     await syncGroup("joined the group");
     subscribeToGroup(groupCode);
     maybeRequestNotificationPermission();
+    setCurrentView("plan");
     showToast("Grupo listo", `Ya estas dentro de ${groupCode}.`, "success");
 }
 
@@ -293,6 +315,7 @@ async function createDemoGroup() {
     await syncGroup("created the demo group");
     subscribeToGroup(state.groupCode);
     maybeRequestNotificationPermission();
+    setCurrentView("plan");
     showToast("Demo lista", "Hemos cargado una BBQ de ejemplo para que pruebes la app.", "success");
 }
 
@@ -321,6 +344,7 @@ async function savePlan() {
     if (!autoArchived) {
         await syncGroup("updated the plan");
     }
+    setCurrentView(autoArchived ? "summary" : "shopping");
     showToast(
         autoArchived ? "Plan archivado" : "Plan guardado",
         autoArchived
@@ -393,6 +417,7 @@ async function seedItems() {
 }
 
 function render() {
+    renderViewState();
     renderSetupGuide();
     renderOverview();
     renderGroup();
@@ -403,6 +428,59 @@ function render() {
     renderMessages();
     renderLocks();
     renderInstallButton();
+}
+
+function renderViewState() {
+    const allowedViews = getAllowedViews();
+    if (!allowedViews.includes(uiState.currentView)) {
+        uiState.currentView = allowedViews[0];
+    }
+
+    const isSummary = uiState.currentView === "summary";
+    const isGroup = uiState.currentView === "group";
+    const isPlan = uiState.currentView === "plan";
+    const isShopping = uiState.currentView === "shopping";
+    const isChat = uiState.currentView === "chat";
+
+    toggleSection(elements.summarySection, isSummary);
+    toggleSection(elements.overviewSection, isSummary);
+    toggleSection(document.getElementById("groupSection"), isGroup);
+    toggleSection(document.getElementById("planSection"), isPlan);
+    toggleSection(document.getElementById("shoppingSection"), isShopping);
+    toggleSection(document.querySelector('[aria-labelledby="assignHeading"]'), isShopping);
+    toggleSection(document.getElementById("chatSection"), isChat);
+
+    elements.appNav.querySelectorAll("[data-view]").forEach((button) => {
+        const view = button.getAttribute("data-view") || "group";
+        button.classList.toggle("is-active", view === uiState.currentView);
+        button.disabled = !allowedViews.includes(view);
+    });
+}
+
+function toggleSection(section, visible) {
+    if (!section) return;
+    section.classList.toggle("hidden-view", !visible);
+}
+
+function setCurrentView(nextView) {
+    const allowed = getAllowedViews();
+    uiState.currentView = allowed.includes(nextView) ? nextView : allowed[0];
+    render();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function getAllowedViews() {
+    if (!hasGroup()) {
+        return ["group"];
+    }
+
+    const views = ["group", "plan", "shopping", "chat", "summary"];
+
+    if (hasArchivedPlan()) {
+        return ["group", "summary"];
+    }
+
+    return views;
 }
 
 function renderSetupGuide() {
@@ -535,7 +613,7 @@ function renderPlan() {
         Estado: ${escapeHtml(hasArchivedPlan() ? `Archivado desde ${formatDateTime(state.plan.archivedAt)}` : state.plan.date ? "Activo" : "Pendiente de crear")}<br>
         Adultos: ${escapeHtml(state.plan.adults || "0")}<br>
         Ninos: ${escapeHtml(state.plan.children || "0")}<br>
-        BBQ reservada(s): ${escapeHtml(state.plan.bbqReserved || "Pendiente")}<br>
+        ${renderPlanBadge("bbq", "BBQ reservada(s)", state.plan.bbqReserved || "Pendiente")}<br>
         Mesa(s): ${escapeHtml(state.plan.tablesReserved || "Pendiente")}<br>
         Notas: ${escapeHtml(state.plan.notes || "Sin notas todavia")}<br>
         ${escapeHtml(syncText)}
@@ -555,87 +633,186 @@ function renderOwnerOptions() {
 }
 
 function renderItems() {
-    const activeItems = filterItemsByView(getActiveItems());
+    const activeItems = getActiveItems();
+    const visibleItems = filterItemsByView(activeItems);
+    const pendingUnassigned = activeItems.filter((item) => !item.completedAt && !item.ownerId);
+    const pendingAssigned = activeItems.filter((item) => !item.completedAt && item.ownerId);
+    const doneItems = activeItems.filter((item) => item.completedAt);
+
     elements.itemsCounter.textContent = `${activeItems.length} items`;
 
     elements.shoppingFilters.querySelectorAll("[data-filter]").forEach((button) => {
         button.classList.toggle("is-active", button.getAttribute("data-filter") === uiState.itemFilter);
     });
 
-    if (!activeItems.length) {
+    if (!visibleItems.length) {
         elements.shoppingList.innerHTML = '<div class="empty-state">No hay items para este filtro. Prueba con otro estado o carga el pack BBQ.</div>';
         return;
     }
 
-    elements.shoppingList.innerHTML = activeItems
-        .map((item) => {
-            const owner = state.friends.find((friend) => friend.id === item.ownerId);
-            const ownerOptions = ['<option value="">Sin asignar</option>']
-                .concat(
-                    state.friends.map(
-                        (friend) => `
-                            <option value="${friend.id}" ${friend.id === item.ownerId ? "selected" : ""}>
-                                ${escapeHtml(friend.name)}
-                            </option>
-                        `
-                    )
-                )
-                .join("");
+    if (uiState.itemFilter !== "all") {
+        elements.shoppingList.innerHTML = visibleItems.map(renderShoppingItemCard).join("");
+        wireShoppingActions();
+        return;
+    }
 
-            if (uiState.editingItemId === item.id) {
-                return `
-                    <article class="shopping-item">
-                        <div class="shopping-top">
-                            <div class="shopping-badges">
-                                <span class="status-badge ${item.completedAt ? "done" : "pending"}">${item.completedAt ? "Comprado" : "Pendiente"}</span>
-                            </div>
-                        </div>
-                        <div class="form-grid compact-grid">
-                            <label>
-                                <span>Item</span>
-                                <input data-edit-name="${item.id}" type="text" value="${escapeHtml(item.name)}">
-                            </label>
-                            <label>
-                                <span>Detalle</span>
-                                <input data-edit-qty="${item.id}" type="text" value="${escapeHtml(item.quantity)}" placeholder="Sin detalle">
-                            </label>
-                        </div>
-                        <div class="shopping-actions">
-                            <select data-owner-select="${item.id}">${ownerOptions}</select>
-                            <button class="inline-action" type="button" data-save-item="${item.id}">Guardar</button>
-                            <button class="inline-action" type="button" data-cancel-edit="${item.id}">Cancelar</button>
-                        </div>
-                    </article>
-                `;
-            }
+    const sections = [
+        {
+            title: "Por asignar",
+            hint: "Empieza por repartir estas compras entre la gente.",
+            items: pendingUnassigned
+        },
+        {
+            title: "Asignado y pendiente",
+            hint: "Estas compras ya tienen responsable.",
+            items: pendingAssigned
+        },
+        {
+            title: "Comprado",
+            hint: "Todo esto ya esta resuelto.",
+            items: doneItems
+        }
+    ];
 
-            return `
-                <article class="shopping-item ${item.completedAt ? "is-done" : ""}">
-                    <div class="shopping-top">
-                        <div>
-                            <strong>${escapeHtml(item.name)}</strong>
-                            <div class="item-meta">${escapeHtml(item.quantity || "Sin detalle")}</div>
-                        </div>
-                        <div>${owner ? `Compra: ${escapeHtml(owner.name)}` : "Sin asignar"}</div>
+    elements.shoppingList.innerHTML = sections
+        .map((section) => `
+            <section class="shopping-group ${section.items.length ? "" : "is-empty"}">
+                <div class="shopping-group-head">
+                    <div>
+                        <strong>${escapeHtml(section.title)}</strong>
+                        <p>${escapeHtml(section.hint)}</p>
                     </div>
-                    <div class="shopping-badges">
-                        <span class="status-badge ${item.completedAt ? "done" : "pending"}">${item.completedAt ? "Comprado" : "Pendiente"}</span>
-                        ${item.ownerId ? "" : '<span class="status-badge pending">Sin asignar</span>'}
-                    </div>
-                    <div class="shopping-actions">
-                        <select data-owner-select="${item.id}">${ownerOptions}</select>
-                        <button class="inline-action" type="button" data-toggle-done="${item.id}">
-                            ${item.completedAt ? "Marcar pendiente" : "Marcar comprado"}
-                        </button>
-                        <button class="inline-action" type="button" data-edit-item="${item.id}">Editar</button>
-                        <button class="inline-button" type="button" data-delete-item="${item.id}">Eliminar</button>
-                    </div>
-                </article>
-            `;
-        })
+                    <span class="status-badge ${section.title === "Comprado" ? "done" : "pending"}">${section.items.length}</span>
+                </div>
+                ${
+                    section.items.length
+                        ? `<div class="shopping-group-list">${section.items.map(renderShoppingItemCard).join("")}</div>`
+                        : '<div class="empty-state compact-empty">Nada por aqui.</div>'
+                }
+            </section>
+        `)
         .join("");
 
     wireShoppingActions();
+}
+
+function renderShoppingItemCard(item) {
+    const owner = state.friends.find((friend) => friend.id === item.ownerId);
+    const ownerOptions = ['<option value="">Sin asignar</option>']
+        .concat(
+            state.friends.map(
+                (friend) => `
+                    <option value="${friend.id}" ${friend.id === item.ownerId ? "selected" : ""}>
+                        ${escapeHtml(friend.name)}
+                    </option>
+                `
+            )
+        )
+        .join("");
+
+    if (uiState.editingItemId === item.id) {
+        return `
+            <article class="shopping-item simplified-card">
+                <div class="shopping-top">
+                    <div class="shopping-badges">
+                        <span class="status-badge ${item.completedAt ? "done" : "pending"}">${item.completedAt ? "Comprado" : "Pendiente"}</span>
+                    </div>
+                </div>
+                <div class="form-grid compact-grid">
+                    <label>
+                        <span>Item</span>
+                        <input data-edit-name="${item.id}" type="text" value="${escapeHtml(item.name)}">
+                    </label>
+                    <label>
+                        <span>Detalle</span>
+                        <input data-edit-qty="${item.id}" type="text" value="${escapeHtml(item.quantity)}" placeholder="Sin detalle">
+                    </label>
+                </div>
+                <div class="shopping-actions">
+                    <select data-owner-select="${item.id}">${ownerOptions}</select>
+                    <button class="inline-action" type="button" data-save-item="${item.id}">Guardar</button>
+                    <button class="inline-action" type="button" data-cancel-edit="${item.id}">Cancelar</button>
+                </div>
+            </article>
+        `;
+    }
+
+    return `
+        <article class="shopping-item simplified-card ${item.completedAt ? "is-done" : ""}">
+            <div class="shopping-top">
+                <div class="shopping-title-wrap">
+                    ${renderItemIcon(item.name)}
+                    <div>
+                        <strong>${escapeHtml(item.name)}</strong>
+                        <div class="item-meta">${escapeHtml(item.quantity || "Sin detalle")}</div>
+                    </div>
+                </div>
+                <div class="shopping-owner-pill">${owner ? escapeHtml(owner.name) : "Sin asignar"}</div>
+            </div>
+            <div class="shopping-actions simple-actions">
+                <select data-owner-select="${item.id}">${ownerOptions}</select>
+                <button class="inline-action" type="button" data-toggle-done="${item.id}">
+                    ${item.completedAt ? "Reabrir" : "Marcar comprado"}
+                </button>
+                <button class="inline-action" type="button" data-edit-item="${item.id}">Editar</button>
+                <button class="inline-button" type="button" data-delete-item="${item.id}">Eliminar</button>
+            </div>
+        </article>
+    `;
+}
+
+function renderItemIcon(itemName) {
+    const icon = getItemIcon(itemName);
+    return `<span class="item-icon item-icon-${icon.tone}" aria-hidden="true">${icon.symbol}</span>`;
+}
+
+function renderPlanBadge(kind, label, value) {
+    const icon = kind === "bbq"
+        ? { symbol: "🔥", tone: "bbq" }
+        : { symbol: "📍", tone: "default" };
+    return `<span class="plan-badge"><span class="item-icon item-icon-${icon.tone}" aria-hidden="true">${icon.symbol}</span>${escapeHtml(label)}: ${escapeHtml(value)}</span>`;
+}
+
+function getItemIcon(itemName) {
+    const name = String(itemName || "").toLowerCase();
+
+    if (name.includes("hamburgues") || name.includes("chuleton") || name.includes("secreto") || name.includes("panceta") || name.includes("chorizo") || name.includes("perrito") || name.includes("pincho") || name.includes("pollo")) {
+        return { symbol: "🥩", tone: "meat" };
+    }
+
+    if (name.includes("pan")) {
+        return { symbol: "🥖", tone: "bread" };
+    }
+
+    if (name.includes("postre")) {
+        return { symbol: "🍰", tone: "dessert" };
+    }
+
+    if (name.includes("cafe")) {
+        return { symbol: "☕", tone: "coffee" };
+    }
+
+    if (name.includes("vino")) {
+        return { symbol: "🍷", tone: "drink" };
+    }
+
+    if (name.includes("cerveza")) {
+        return { symbol: "🍺", tone: "drink" };
+    }
+
+    if (name.includes("hielo")) {
+        return { symbol: "🧊", tone: "ice" };
+    }
+
+    if (name.includes("carbon") || name.includes("bbq")) {
+        return { symbol: "🔥", tone: "bbq" };
+    }
+
+    if (name.includes("ketchup")) {
+        return { symbol: "🍅", tone: "sauce" };
+    }
+
+    return { symbol: "🍴", tone: "default" };
 }
 
 function wireShoppingActions() {
@@ -703,7 +880,7 @@ function renderAssignments() {
                             .map(
                                 (item) => `
                                     <li>
-                                        <strong>${escapeHtml(item.name)}</strong><br>
+                                        <span class="assignment-item-line">${renderItemIcon(item.name)}<strong>${escapeHtml(item.name)}</strong></span><br>
                                         ${escapeHtml(item.quantity || "Sin detalle")}
                                     </li>
                                 `
@@ -713,7 +890,7 @@ function renderAssignments() {
                             .map(
                                 (item) => `
                                     <li>
-                                        <strong>${escapeHtml(item.name)}</strong><br>
+                                        <span class="assignment-item-line">${renderItemIcon(item.name)}<strong>${escapeHtml(item.name)}</strong></span><br>
                                         Comprado
                                     </li>
                                 `

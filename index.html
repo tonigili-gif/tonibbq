@@ -30,33 +30,34 @@
         </header>
 
         <main class="content" aria-label="Contenido principal de ToniBBQ">
-            <section class="panel setup-panel" aria-labelledby="setupHeading">
+            <nav class="app-nav" id="appNav" aria-label="Navegacion principal de ToniBBQ">
+                <button class="app-nav-link is-active" type="button" data-view="group">Inicio</button>
+                <button class="app-nav-link" type="button" data-view="plan">Plan</button>
+                <button class="app-nav-link" type="button" data-view="shopping">Compra</button>
+                <button class="app-nav-link" type="button" data-view="chat">Chat</button>
+                <button class="app-nav-link" type="button" data-view="summary">Resumen</button>
+            </nav>
+
+            <section class="panel setup-panel" id="summarySection" aria-labelledby="setupHeading">
                 <div class="panel-head split">
                     <div>
-                        <p class="eyebrow">Primeros pasos</p>
-                        <h2 id="setupHeading">Monta la BBQ en 3 pasos</h2>
+                        <p class="eyebrow">Ruta rapida</p>
+                        <h2 id="setupHeading">Que toca ahora</h2>
                     </div>
                 </div>
                 <div class="setup-grid" id="setupGuide"></div>
             </section>
 
-            <section class="panel overview-panel" aria-labelledby="overviewHeading">
+            <section class="panel overview-panel" id="overviewSection" aria-labelledby="overviewHeading">
                 <div class="panel-head split">
                     <div>
                         <p class="eyebrow">Resumen ejecutivo</p>
-                        <h2 id="overviewHeading">Estado de la barbacoa</h2>
+                        <h2 id="overviewHeading">Estado de la BBQ</h2>
                     </div>
                 </div>
                 <div class="overview-grid" id="overviewGrid"></div>
                 <div class="overview-note" id="overviewNote"></div>
             </section>
-
-            <nav class="section-nav" aria-label="Secciones de la app">
-                <a href="#groupSection">Grupo</a>
-                <a href="#planSection">Plan</a>
-                <a href="#shoppingSection">Compra</a>
-                <a href="#chatSection">Chat</a>
-            </nav>
 
             <section class="panel panel-highlight" id="groupSection" aria-labelledby="groupHeading">
                 <div class="panel-head">
@@ -130,6 +131,7 @@
                 </label>
 
                 <div class="action-row">
+                    <button class="button secondary" id="goToGroupButton" type="button">Volver al inicio</button>
                     <button class="button primary" id="savePlanButton">Guardar plan</button>
                 </div>
 
@@ -174,6 +176,7 @@
                 <div class="action-row">
                     <button class="button primary" id="addItemButton">Anadir item</button>
                     <button class="button secondary" id="seedItemsButton">Cargar pack BBQ</button>
+                    <button class="button secondary" id="goToChatButton" type="button">Ir al chat</button>
                 </div>
 
                 <div class="shopping-list" id="shoppingList"></div>
