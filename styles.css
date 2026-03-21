@@ -62,11 +62,11 @@ body::before {
 
 .hero {
     position: relative;
-    padding: 28px 24px 32px;
-    min-height: 640px;
+    padding: 24px 24px 32px;
+    min-height: 660px;
     border-radius: var(--radius-xl);
     background:
-        radial-gradient(circle at top right, rgba(125, 242, 170, 0.14), transparent 30%),
+        radial-gradient(circle at top right, rgba(125, 242, 170, 0.12), transparent 30%),
         linear-gradient(180deg, #0a2116 0%, #08160f 100%);
     border: 1px solid rgba(125, 242, 170, 0.18);
     box-shadow: var(--shadow);
@@ -78,7 +78,8 @@ body::before {
     position: absolute;
     inset: 0;
     background:
-        radial-gradient(circle at 50% 24%, rgba(255, 140, 40, 0.22), transparent 24%);
+        radial-gradient(circle at 50% 22%, rgba(255, 140, 40, 0.24), transparent 20%),
+        radial-gradient(circle at 50% 14%, rgba(255, 92, 24, 0.1), transparent 12%);
     z-index: 0;
 }
 
@@ -87,7 +88,7 @@ body::before {
     position: absolute;
     inset: 0;
     background:
-        linear-gradient(180deg, rgba(7, 26, 17, 0.08) 0%, rgba(7, 26, 17, 0.38) 48%, rgba(7, 26, 17, 0.88) 100%);
+        linear-gradient(180deg, rgba(7, 26, 17, 0.04) 0%, rgba(7, 26, 17, 0.18) 32%, rgba(7, 26, 17, 0.72) 64%, rgba(7, 26, 17, 0.93) 100%);
     z-index: 2;
 }
 
@@ -101,16 +102,16 @@ body::before {
     z-index: 1;
     background-image: url("./hero-tonibbq.png");
     background-repeat: no-repeat;
-    background-position: center 0;
-    background-size: 62%;
-    opacity: 0.92;
+    background-position: center 8px;
+    background-size: min(560px, 68%);
+    opacity: 0.94;
     filter: drop-shadow(0 24px 48px rgba(0, 0, 0, 0.45));
 }
 
 .hero-content {
     position: relative;
     z-index: 3;
-    padding-top: 410px;
+    padding-top: 408px;
     max-width: 34rem;
 }
 
@@ -130,8 +131,8 @@ body::before {
     display: inline-flex;
     padding: 8px 12px;
     border-radius: 999px;
-    background: rgba(236, 255, 243, 0.08);
-    border: 1px solid rgba(255, 153, 71, 0.12);
+    background: rgba(236, 255, 243, 0.06);
+    border: 1px solid rgba(236, 255, 243, 0.1);
     color: var(--green-2);
 }
 
@@ -140,14 +141,14 @@ body::before {
     font-size: clamp(3.2rem, 12vw, 5.4rem);
     line-height: 0.92;
     letter-spacing: -0.05em;
-    text-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    text-shadow: 0 10px 28px rgba(0, 0, 0, 0.38);
 }
 
 .hero-copy {
     max-width: 28rem;
     color: rgba(231, 244, 235, 0.88);
-    font-size: 1.05rem;
-    line-height: 1.65;
+    font-size: 1.02rem;
+    line-height: 1.62;
 }
 
 .hero-pills {
@@ -951,16 +952,16 @@ textarea {
     }
 
     .hero {
-        min-height: 520px;
+        min-height: 540px;
     }
 
     .hero-art-wrap {
-        background-size: 92%;
-        background-position: center 8px;
+        background-size: min(420px, 96%);
+        background-position: center 10px;
     }
 
     .hero-content {
-        padding-top: 300px;
+        padding-top: 302px;
     }
 
     .form-grid,
