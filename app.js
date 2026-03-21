@@ -27,6 +27,7 @@ const initialState = {
     clientId: createId(),
     lastSyncedAt: "",
     plan: blankPlan(),
+    archivedPlans: [],
     friends: [],
     items: [],
     messages: []
@@ -37,7 +38,8 @@ const uiState = {
     editingItemId: "",
     deferredInstallPrompt: null,
     archivingInFlight: false,
-    currentView: "group"
+    currentView: "group",
+    selectedArchivedPlanId: ""
 };
 
 const APP_CONFIG = window.TONIBBQ_CONFIG || {};
@@ -99,6 +101,8 @@ const elements = {
     messagesCounter: document.getElementById("messagesCounter"),
     setupGuide: document.getElementById("setupGuide"),
     summarySection: document.getElementById("summarySection"),
+    archivedPlansList: document.getElementById("archivedPlansList"),
+    archivedPlanDetail: document.getElementById("archivedPlanDetail"),
     overviewSection: document.getElementById("overviewSection"),
     overviewGrid: document.getElementById("overviewGrid"),
     overviewNote: document.getElementById("overviewNote"),
@@ -274,6 +278,7 @@ async function joinGroup() {
     friend.updatedAt = nowIso();
 
     state.currentFriendId = friend.id;
+    uiState.selectedArchivedPlanId = "";
     persistAndRender();
     await syncGroup("joined the group");
     subscribeToGroup(groupCode);
@@ -292,6 +297,8 @@ async function createDemoGroup() {
     ];
     state.friends[0].deviceId = state.clientId;
     state.currentFriendId = state.friends[0].id;
+    state.archivedPlans = [];
+    uiState.selectedArchivedPlanId = "";
     state.plan = normalizePlan({
         date: getUpcomingSaturday(),
         adults: "10",
@@ -422,6 +429,7 @@ function render() {
     renderOverview();
     renderGroup();
     renderPlan();
+    renderArchivedPlans();
     renderOwnerOptions();
     renderItems();
     renderAssignments();
@@ -474,13 +482,7 @@ function getAllowedViews() {
         return ["group"];
     }
 
-    const views = ["group", "plan", "shopping", "chat", "summary"];
-
-    if (hasArchivedPlan()) {
-        return ["group", "summary"];
-    }
-
-    return views;
+    return ["group", "plan", "shopping", "chat", "summary"];
 }
 
 function renderSetupGuide() {
@@ -538,6 +540,11 @@ function renderOverview() {
             label: "Mensajes",
             value: String(getActiveMessages().length),
             detail: hasGroup() ? "Conversacion compartida" : "El chat se activa al unirse"
+        },
+        {
+            label: "Planes anteriores",
+            value: String(state.archivedPlans.length || 0),
+            detail: state.archivedPlans.length ? "Puedes abrir el historial del grupo" : "El historial aparecera aqui"
         }
     ];
 
@@ -558,11 +565,10 @@ function getOverviewNote(pendingItems, unassignedItems) {
     if (!hasGroup()) {
         return "Empieza por unirte al grupo o cargar la demo para activar el resto de la app.";
     }
-    if (hasArchivedPlan()) {
-        return "La fecha de esta BBQ ya ha pasado y el grupo ha quedado archivado automaticamente en modo lectura.";
-    }
     if (!isPlanReady()) {
-        return "Siguiente paso recomendado: completa el plan con fecha, asistentes, BBQs y mesas.";
+        return state.archivedPlans.length
+            ? "Puedes montar una nueva BBQ o abrir uno de los planes anteriores del grupo."
+            : "Siguiente paso recomendado: completa el plan con fecha, asistentes, BBQs y mesas.";
     }
     if (!getActiveItems().length) {
         return "Siguiente paso recomendado: carga el pack BBQ y empieza a asignar compras.";
@@ -610,7 +616,7 @@ function renderPlan() {
     const syncText = state.lastSyncedAt ? `Ultima sync: ${formatTime(state.lastSyncedAt)}` : "Sin sincronizar";
     elements.planSummary.innerHTML = `
         <strong>${dateText}</strong><br>
-        Estado: ${escapeHtml(hasArchivedPlan() ? `Archivado desde ${formatDateTime(state.plan.archivedAt)}` : state.plan.date ? "Activo" : "Pendiente de crear")}<br>
+        Estado: ${escapeHtml(state.plan.date ? "Activo" : "Pendiente de crear")}<br>
         Adultos: ${escapeHtml(state.plan.adults || "0")}<br>
         Ninos: ${escapeHtml(state.plan.children || "0")}<br>
         ${renderPlanBadge("bbq", "BBQ reservada(s)", state.plan.bbqReserved || "Pendiente")}<br>
@@ -618,6 +624,102 @@ function renderPlan() {
         Notas: ${escapeHtml(state.plan.notes || "Sin notas todavia")}<br>
         ${escapeHtml(syncText)}
     `;
+}
+
+function renderArchivedPlans() {
+    if (!elements.archivedPlansList || !elements.archivedPlanDetail) {
+        return;
+    }
+
+    if (!state.archivedPlans.length) {
+        elements.archivedPlansList.innerHTML = '<div class="empty-state">Cuando una BBQ pase de fecha, su plan, compras y chat quedaran guardados aqui.</div>';
+        elements.archivedPlanDetail.classList.add("hidden-view");
+        elements.archivedPlanDetail.innerHTML = "";
+        return;
+    }
+
+    const selected = getSelectedArchivedPlan();
+
+    elements.archivedPlansList.innerHTML = state.archivedPlans
+        .map((entry) => `
+            <article class="history-card ${selected && selected.id === entry.id ? "is-selected" : ""}">
+                <div class="history-top">
+                    <div>
+                        <strong>${escapeHtml(entry.plan.date ? formatDate(entry.plan.date) : "BBQ sin fecha")}</strong>
+                        <p>Archivado el ${escapeHtml(formatDateTime(entry.archivedAt))}</p>
+                    </div>
+                    <button class="inline-action" type="button" data-open-archived-plan="${entry.id}">
+                        ${selected && selected.id === entry.id ? "Abierto" : "Abrir"}
+                    </button>
+                </div>
+                <div class="history-metrics">
+                    <span>${escapeHtml(String(entry.friendCount || entry.friends.length || 0))} amigos</span>
+                    <span>${escapeHtml(String(entry.pendingItems || 0))} pendientes</span>
+                    <span>${escapeHtml(String(entry.completedItems || 0))} comprados</span>
+                    <span>${escapeHtml(String(entry.messageCount || entry.messages.length || 0))} mensajes</span>
+                </div>
+            </article>
+        `)
+        .join("");
+
+    document.querySelectorAll("[data-open-archived-plan]").forEach((button) => {
+        button.addEventListener("click", () => {
+            uiState.selectedArchivedPlanId = button.getAttribute("data-open-archived-plan") || "";
+            renderArchivedPlans();
+        });
+    });
+
+    if (!selected) {
+        elements.archivedPlanDetail.classList.add("hidden-view");
+        elements.archivedPlanDetail.innerHTML = "";
+        return;
+    }
+
+    elements.archivedPlanDetail.classList.remove("hidden-view");
+    elements.archivedPlanDetail.innerHTML = `
+        <div class="history-detail-head">
+            <div>
+                <p class="eyebrow">Plan archivado</p>
+                <h3>${escapeHtml(selected.plan.date ? formatDate(selected.plan.date) : "BBQ sin fecha")}</h3>
+            </div>
+            <button class="inline-action" type="button" id="closeArchivedPlanButton">Cerrar</button>
+        </div>
+        <div class="history-detail-grid">
+            <article class="summary-card">
+                <strong>Plan</strong><br>
+                Adultos: ${escapeHtml(selected.plan.adults || "0")}<br>
+                Ninos: ${escapeHtml(selected.plan.children || "0")}<br>
+                BBQ: ${escapeHtml(selected.plan.bbqReserved || "Pendiente")}<br>
+                Mesas: ${escapeHtml(selected.plan.tablesReserved || "Pendiente")}<br>
+                Notas: ${escapeHtml(selected.plan.notes || "Sin notas")}<br>
+            </article>
+            <article class="summary-card">
+                <strong>Compra</strong><br>
+                Pendientes: ${escapeHtml(String(selected.pendingItems || 0))}<br>
+                Comprados: ${escapeHtml(String(selected.completedItems || 0))}<br>
+                Total items: ${escapeHtml(String(selected.items.length || 0))}<br>
+                Mensajes: ${escapeHtml(String(selected.messages.length || 0))}<br>
+            </article>
+        </div>
+        <div class="history-chat">
+            <strong>Chat del plan</strong>
+            <div class="chat-thread history-chat-thread">
+                ${
+                    selected.messages.length
+                        ? selected.messages.map((message) => renderArchivedMessage(message, selected.friends)).join("")
+                        : '<div class="empty-state">Este plan no tuvo mensajes guardados.</div>'
+                }
+            </div>
+        </div>
+    `;
+
+    const closeButton = document.getElementById("closeArchivedPlanButton");
+    if (closeButton) {
+        closeButton.addEventListener("click", () => {
+            uiState.selectedArchivedPlanId = "";
+            renderArchivedPlans();
+        });
+    }
 }
 
 function renderOwnerOptions() {
@@ -694,6 +796,24 @@ function renderItems() {
         .join("");
 
     wireShoppingActions();
+}
+
+function getSelectedArchivedPlan() {
+    return state.archivedPlans.find((entry) => entry.id === uiState.selectedArchivedPlanId) || null;
+}
+
+function renderArchivedMessage(message, friends) {
+    const author = (friends || []).find((friend) => friend.id === message.authorId);
+    return `
+        <article class="chat-bubble theirs">
+            <div class="chat-meta">
+                <span>${escapeHtml(author ? author.name : "Amigo")}</span>
+                <span>${escapeHtml(formatChatDate(message.createdAt))}</span>
+            </div>
+            ${message.photoDataUrl ? `<img class="chat-photo" src="${message.photoDataUrl}" alt="Foto guardada en este plan">` : ""}
+            <div class="chat-text">${escapeHtml(message.text)}</div>
+        </article>
+    `;
 }
 
 function renderShoppingItemCard(item) {
@@ -1194,6 +1314,7 @@ async function syncGroup(reason) {
             const row = {
                 code: state.groupCode,
                 plan: mergedGroup.plan,
+                archived_plans: mergedGroup.archivedPlans,
                 friends: mergedGroup.friends,
                 items: mergedGroup.items,
                 messages: mergedGroup.messages,
@@ -1575,6 +1696,7 @@ function normalizePlan(plan) {
         bbqReserved: String(plan.bbqReserved || ""),
         tablesReserved: String(plan.tablesReserved || ""),
         notes: String(plan.notes || ""),
+        archivedAt: String(plan.archivedAt || ""),
         updatedAt: String(plan.updatedAt || "")
     };
 }
@@ -1697,17 +1819,52 @@ async function maybeArchiveExpiredPlan() {
 
     uiState.archivingInFlight = true;
     try {
-        state.plan.archivedAt = nowIso();
-        state.plan.updatedAt = state.plan.archivedAt;
+        const archivedAt = nowIso();
+        const archivedItems = state.items.map(normalizeItem);
+        const archivedMessages = state.messages.map(normalizeMessage);
+
+        state.archivedPlans.unshift(buildArchivedPlanSnapshot(archivedAt));
+        state.plan = normalizePlan({ ...blankPlan(), updatedAt: archivedAt });
+        state.items = archivedItems.map((item) => normalizeItem({
+            ...item,
+            deletedAt: item.deletedAt || archivedAt,
+            updatedAt: archivedAt
+        }));
+        state.messages = archivedMessages.map((message) => normalizeMessage({
+            ...message,
+            deletedAt: message.deletedAt || archivedAt,
+            updatedAt: archivedAt
+        }));
+        uiState.selectedArchivedPlanId = state.archivedPlans[0] ? state.archivedPlans[0].id : "";
         persistAndRender();
         if (dataProvider !== "demo") {
             await syncGroup("auto-archived expired plan");
         }
-        showToast("Plan archivado", "La fecha de la BBQ ya ha pasado y el grupo queda en modo lectura.", "success");
+        showToast("Plan archivado", "La fecha de la BBQ ya ha pasado. Hemos guardado su compra y su chat en planes anteriores.", "success");
         return true;
     } finally {
         uiState.archivingInFlight = false;
     }
+}
+
+function buildArchivedPlanSnapshot(archivedAt) {
+    const items = state.items.map(normalizeItem);
+    const messages = state.messages.map(normalizeMessage);
+
+    return normalizeArchivedPlan({
+        id: createId(),
+        archivedAt,
+        updatedAt: archivedAt,
+        sourceDate: state.plan.date,
+        friendCount: state.friends.length,
+        pendingItems: items.filter((item) => !item.completedAt && !item.deletedAt).length,
+        completedItems: items.filter((item) => item.completedAt && !item.deletedAt).length,
+        messageCount: messages.filter((message) => !message.deletedAt).length,
+        plan: normalizePlan({ ...state.plan, archivedAt, updatedAt: archivedAt }),
+        friends: state.friends.map(normalizeFriend),
+        items,
+        messages
+    });
 }
 
 function normalizeGroupCode(value) {

@@ -1,6 +1,7 @@
 create table if not exists public.bbq_groups (
   code text primary key,
   plan jsonb not null default '{}'::jsonb,
+  archived_plans jsonb not null default '[]'::jsonb,
   friends jsonb not null default '[]'::jsonb,
   items jsonb not null default '[]'::jsonb,
   messages jsonb not null default '[]'::jsonb,
@@ -8,6 +9,9 @@ create table if not exists public.bbq_groups (
   updated_reason text,
   updated_at timestamptz not null default now()
 );
+
+alter table public.bbq_groups
+add column if not exists archived_plans jsonb not null default '[]'::jsonb;
 
 alter table public.bbq_groups enable row level security;
 

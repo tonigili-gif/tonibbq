@@ -31,8 +31,10 @@ def blank_group(group_code: str) -> dict:
             "bbqReserved": "",
             "tablesReserved": "",
             "notes": "",
+            "archivedAt": "",
             "updatedAt": ""
         },
+        "archivedPlans": [],
         "friends": [],
         "items": [],
         "messages": []
@@ -143,12 +145,14 @@ class ToniBBQHandler(SimpleHTTPRequestHandler):
 def merge_group_data(existing: dict, incoming: dict) -> dict:
     group_code = incoming.get("groupCode") or existing.get("groupCode") or ""
     plan = merge_plan(existing.get("plan") or {}, incoming.get("plan") or {})
+    archived_plans = merge_archived_plans(existing.get("archivedPlans") or [], incoming.get("archivedPlans") or [])
     friends = merge_friends(existing.get("friends") or [], incoming.get("friends") or [])
     items = merge_items(existing.get("items") or [], incoming.get("items") or [])
     messages = merge_messages(existing.get("messages") or [], incoming.get("messages") or [])
     return {
         "groupCode": group_code,
         "plan": plan,
+        "archivedPlans": archived_plans,
         "friends": friends,
         "items": items,
         "messages": messages
@@ -166,6 +170,7 @@ def merge_plan(existing: dict, incoming: dict) -> dict:
     merged.setdefault("bbqReserved", "")
     merged.setdefault("tablesReserved", "")
     merged.setdefault("notes", "")
+    merged.setdefault("archivedAt", "")
     merged.setdefault("updatedAt", "")
     return merged
 
@@ -181,6 +186,7 @@ def merge_friends(existing: list[dict], incoming: list[dict]) -> list[dict]:
         if previous is None or (friend.get("updatedAt") or "") >= (previous.get("updatedAt") or ""):
             merged[friend_id] = {
                 "id": friend_id,
+                "deviceId": friend.get("deviceId", ""),
                 "name": friend.get("name", ""),
                 "updatedAt": friend.get("updatedAt", "")
             }
@@ -209,6 +215,7 @@ def merge_items(existing: list[dict], incoming: list[dict]) -> list[dict]:
                 "quantity": item.get("quantity", ""),
                 "ownerId": item.get("ownerId", ""),
                 "updatedAt": item.get("updatedAt", ""),
+                "completedAt": item.get("completedAt", ""),
                 "deletedAt": item.get("deletedAt", "")
             }
 
@@ -227,12 +234,26 @@ def merge_messages(existing: list[dict], incoming: list[dict]) -> list[dict]:
                 "id": message_id,
                 "authorId": message.get("authorId", ""),
                 "text": message.get("text", ""),
+                "photoDataUrl": message.get("photoDataUrl", ""),
                 "createdAt": message.get("createdAt", ""),
                 "updatedAt": message.get("updatedAt", ""),
                 "deletedAt": message.get("deletedAt", "")
             }
 
     return sorted(merged.values(), key=lambda message: message.get("createdAt", ""))
+
+
+def merge_archived_plans(existing: list[dict], incoming: list[dict]) -> list[dict]:
+    merged: dict[str, dict] = {}
+    for entry in existing + incoming:
+        entry_id = entry.get("id")
+        if not entry_id:
+            continue
+        previous = merged.get(entry_id)
+        if previous is None or (entry.get("updatedAt") or "") >= (previous.get("updatedAt") or ""):
+            merged[entry_id] = deepcopy(entry)
+
+    return sorted(merged.values(), key=lambda entry: entry.get("archivedAt", ""), reverse=True)
 
 
 def run() -> None:

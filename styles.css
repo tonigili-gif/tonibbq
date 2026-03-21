@@ -243,6 +243,18 @@ body::before {
     gap: 14px;
 }
 
+.history-shell {
+    margin-top: 22px;
+    display: grid;
+    gap: 14px;
+}
+
+.history-head h3,
+.history-detail-head h3 {
+    margin: 8px 0 0;
+    font-size: 1.4rem;
+}
+
 .setup-step,
 .overview-card {
     padding: 18px;
@@ -525,6 +537,64 @@ textarea {
     padding: 16px;
     color: var(--muted);
     line-height: 1.7;
+}
+
+.history-list,
+.history-detail-grid {
+    display: grid;
+    gap: 12px;
+}
+
+.history-card,
+.history-detail {
+    border-radius: var(--radius-lg);
+    background: rgba(236, 255, 243, 0.06);
+    border: 1px solid rgba(125, 242, 170, 0.08);
+    padding: 16px;
+}
+
+.history-card.is-selected {
+    border-color: rgba(125, 242, 170, 0.26);
+    background: rgba(125, 242, 170, 0.08);
+}
+
+.history-top,
+.history-detail-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 14px;
+    align-items: flex-start;
+}
+
+.history-top p {
+    margin: 6px 0 0;
+    color: var(--muted);
+}
+
+.history-metrics {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 14px;
+    color: var(--muted);
+    font-size: 0.92rem;
+}
+
+.history-metrics span {
+    padding: 8px 10px;
+    border-radius: 999px;
+    background: rgba(236, 255, 243, 0.05);
+    border: 1px solid rgba(125, 242, 170, 0.08);
+}
+
+.history-chat {
+    margin-top: 16px;
+    display: grid;
+    gap: 12px;
+}
+
+.history-chat-thread {
+    max-height: 340px;
 }
 
 .shopping-item {
@@ -946,7 +1016,8 @@ textarea {
     .compact-grid,
     .add-item-grid,
     .setup-grid,
-    .overview-grid {
+    .overview-grid,
+    .history-detail-grid {
         grid-template-columns: 1fr;
     }
 
