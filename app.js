@@ -7,6 +7,7 @@ const defaultItems = [
     { name: "Perritos", quantity: "", ownerId: "" },
     { name: "Pan perritos", quantity: "", ownerId: "" },
     { name: "Carne adultos", quantity: "", ownerId: "" },
+    { name: "Carbon", quantity: "", ownerId: "" },
     { name: "Pan barras", quantity: "", ownerId: "" },
     { name: "Hielos", quantity: "", ownerId: "" },
     { name: "Cerveza", quantity: "", ownerId: "" },
