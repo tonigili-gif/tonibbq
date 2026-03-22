@@ -89,6 +89,8 @@
                 <div class="action-row">
                     <button class="button primary" id="joinGroupButton">Unirme al grupo</button>
                     <button class="button secondary" id="createDemoButton">Crear grupo demo</button>
+                    <button class="button tertiary" id="shareGroupButton" type="button">Invitar amigos</button>
+                    <button class="button tertiary" id="copyGroupCodeButton" type="button">Copiar codigo</button>
                 </div>
 
                 <div class="friend-strip" id="friendStrip"></div>
@@ -111,6 +113,20 @@
                         <span>Fecha</span>
                         <input id="bbqDate" type="date">
                     </label>
+                    <label>
+                        <span>Respuestas</span>
+                        <select id="responseDeadlineMode">
+                            <option value="none">Sin limite</option>
+                            <option value="date">Poner limite</option>
+                        </select>
+                    </label>
+                    <label class="hidden-view" id="responseDeadlineField">
+                        <span>Limite para responder</span>
+                        <input id="responseDeadlineDate" type="date">
+                    </label>
+                </div>
+
+                <div class="form-grid">
                     <label>
                         <span>Adultos</span>
                         <input id="adultsCount" type="number" min="0" placeholder="Ej. 12">

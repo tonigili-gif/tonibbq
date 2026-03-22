@@ -66,10 +66,15 @@ const elements = {
     groupCode: document.getElementById("groupCode"),
     joinGroupButton: document.getElementById("joinGroupButton"),
     createDemoButton: document.getElementById("createDemoButton"),
+    shareGroupButton: document.getElementById("shareGroupButton"),
+    copyGroupCodeButton: document.getElementById("copyGroupCodeButton"),
     activeGroupChip: document.getElementById("activeGroupChip"),
     appNav: document.getElementById("appNav"),
     friendStrip: document.getElementById("friendStrip"),
     bbqDate: document.getElementById("bbqDate"),
+    responseDeadlineMode: document.getElementById("responseDeadlineMode"),
+    responseDeadlineField: document.getElementById("responseDeadlineField"),
+    responseDeadlineDate: document.getElementById("responseDeadlineDate"),
     adultsCount: document.getElementById("adultsCount"),
     childrenCount: document.getElementById("childrenCount"),
     bbqReserved: document.getElementById("bbqReserved"),
@@ -107,6 +112,7 @@ const elements = {
 };
 
 hydrateInputs();
+hydrateSharedGroupFromUrl();
 bindEvents();
 render();
 initializeApp();
@@ -127,6 +133,14 @@ function bindEvents() {
         withButtonState(elements.createDemoButton, "Preparando demo...", createDemoGroup);
     });
 
+    elements.shareGroupButton.addEventListener("click", () => {
+        withButtonState(elements.shareGroupButton, "Preparando...", inviteFriends);
+    });
+
+    elements.copyGroupCodeButton.addEventListener("click", () => {
+        withButtonState(elements.copyGroupCodeButton, "Copiando...", copyGroupCode);
+    });
+
     elements.goToGroupButton.addEventListener("click", () => {
         setCurrentView("group");
     });
@@ -134,6 +148,8 @@ function bindEvents() {
     elements.savePlanButton.addEventListener("click", () => {
         withButtonState(elements.savePlanButton, "Guardando plan...", savePlan);
     });
+
+    elements.responseDeadlineMode.addEventListener("change", syncResponseDeadlineVisibility);
 
     elements.addItemButton.addEventListener("click", () => {
         withButtonState(elements.addItemButton, "Anadiendo...", addItem);
@@ -205,6 +221,8 @@ window.addEventListener("storage", (event) => {
 function hydrateInputs() {
     elements.groupCode.value = state.groupCode;
     elements.bbqDate.value = state.plan.date;
+    elements.responseDeadlineMode.value = state.plan.responseDeadlineEnabled ? "date" : "none";
+    elements.responseDeadlineDate.value = state.plan.responseDeadline;
     elements.adultsCount.value = state.plan.adults;
     elements.childrenCount.value = state.plan.children;
     elements.bbqReserved.value = state.plan.bbqReserved;
@@ -212,6 +230,17 @@ function hydrateInputs() {
     elements.planNotes.value = state.plan.notes;
     const currentFriend = state.friends.find((friend) => friend.id === state.currentFriendId);
     elements.friendName.value = currentFriend ? currentFriend.name : "";
+    syncResponseDeadlineVisibility();
+}
+
+function hydrateSharedGroupFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const sharedGroup = normalizeGroupCode(params.get("group") || "");
+    if (!sharedGroup) return;
+    elements.groupCode.value = sharedGroup;
+    if (!state.groupCode) {
+        state.groupCode = sharedGroup;
+    }
 }
 
 async function initializeApp() {
@@ -286,6 +315,8 @@ async function createDemoGroup() {
     uiState.selectedArchivedPlanId = "";
     state.plan = normalizePlan({
         date: getUpcomingSaturday(),
+        responseDeadlineEnabled: false,
+        responseDeadline: "",
         adults: "10",
         children: "4",
         bbqReserved: "BBQ 2 y 3",
@@ -321,8 +352,15 @@ async function savePlan() {
         return;
     }
 
+    if (elements.responseDeadlineMode.value === "date" && !elements.responseDeadlineDate.value) {
+        showToast("Falta el limite", "Elige una fecha limite o deja la opcion en sin limite.", "error");
+        return;
+    }
+
     state.plan = normalizePlan({
         date: elements.bbqDate.value,
+        responseDeadlineEnabled: elements.responseDeadlineMode.value === "date",
+        responseDeadline: elements.responseDeadlineMode.value === "date" ? elements.responseDeadlineDate.value : "",
         adults: elements.adultsCount.value,
         children: elements.childrenCount.value,
         bbqReserved: elements.bbqReserved.value.trim(),
@@ -588,6 +626,8 @@ function renderGroup() {
         ? `${state.groupCode || "Sin grupo"} · Archivado`
         : (state.groupCode || "Sin grupo");
     elements.activeGroupChip.classList.toggle("is-archived", hasArchivedPlan());
+    elements.shareGroupButton.disabled = !hasGroup();
+    elements.copyGroupCodeButton.disabled = !hasGroup();
 
     if (!state.friends.length) {
         elements.friendStrip.innerHTML = '<div class="empty-state">Todavia no hay amigos en este grupo. Puedes arrancar con Crear grupo demo.</div>';
@@ -614,11 +654,23 @@ function renderGroup() {
 
 function renderPlan() {
     const context = getCurrentPlanContext();
+    elements.bbqDate.value = context.plan.date || "";
+    elements.responseDeadlineMode.value = context.plan.responseDeadlineEnabled ? "date" : "none";
+    elements.responseDeadlineDate.value = context.plan.responseDeadline || "";
+    elements.adultsCount.value = context.plan.adults || "";
+    elements.childrenCount.value = context.plan.children || "";
+    elements.bbqReserved.value = context.plan.bbqReserved || "";
+    elements.tablesReserved.value = context.plan.tablesReserved || "";
+    elements.planNotes.value = context.plan.notes || "";
     const dateText = context.plan.date ? formatDate(context.plan.date) : "Sin fecha";
+    const responseDeadlineText = context.plan.responseDeadlineEnabled && context.plan.responseDeadline
+        ? formatDate(context.plan.responseDeadline)
+        : "Sin limite";
     const syncText = state.lastSyncedAt ? `Ultima sync: ${formatTime(state.lastSyncedAt)}` : "Sin sincronizar";
     elements.planSummary.innerHTML = `
         <strong>${dateText}</strong><br>
         Estado: ${escapeHtml(context.archived ? `Archivado desde ${formatDateTime(context.archivedAt)}` : context.plan.date ? "Activo" : "Pendiente de crear")}<br>
+        Respuestas: ${escapeHtml(responseDeadlineText)}<br>
         Adultos: ${escapeHtml(context.plan.adults || "0")}<br>
         Ninos: ${escapeHtml(context.plan.children || "0")}<br>
         ${renderPlanBadge("bbq", "BBQ reservada(s)", context.plan.bbqReserved || "Pendiente")}<br>
@@ -629,6 +681,8 @@ function renderPlan() {
 
     [
         elements.bbqDate,
+        elements.responseDeadlineMode,
+        elements.responseDeadlineDate,
         elements.adultsCount,
         elements.childrenCount,
         elements.bbqReserved,
@@ -639,6 +693,8 @@ function renderPlan() {
         if (!element) return;
         element.disabled = context.archived;
     });
+
+    syncResponseDeadlineVisibility();
 }
 
 function renderArchivedPlans() {
@@ -660,7 +716,7 @@ function renderArchivedPlans() {
             <article class="history-card ${selected && selected.id === entry.id ? "is-selected" : ""}">
                 <div class="history-top">
                     <div>
-                        <strong>${escapeHtml(entry.plan.date ? formatDate(entry.plan.date) : "BBQ sin fecha")}</strong>
+                <strong>${escapeHtml(entry.plan.date ? formatDate(entry.plan.date) : "BBQ sin fecha")}</strong>
                         <p>Archivado el ${escapeHtml(formatDateTime(entry.archivedAt))}</p>
                     </div>
                     <button class="inline-action" type="button" data-open-archived-plan="${entry.id}">
@@ -704,6 +760,7 @@ function renderArchivedPlans() {
                 <strong>Plan</strong><br>
                 Adultos: ${escapeHtml(selected.plan.adults || "0")}<br>
                 Ninos: ${escapeHtml(selected.plan.children || "0")}<br>
+                Respuestas: ${escapeHtml(selected.plan.responseDeadlineEnabled && selected.plan.responseDeadline ? formatDate(selected.plan.responseDeadline) : "Sin limite")}<br>
                 BBQ: ${escapeHtml(selected.plan.bbqReserved || "Pendiente")}<br>
                 Mesas: ${escapeHtml(selected.plan.tablesReserved || "Pendiente")}<br>
                 Notas: ${escapeHtml(selected.plan.notes || "Sin notas")}<br>
@@ -1686,6 +1743,8 @@ function normalizeGroupRow(row) {
 function blankPlan() {
     return {
         date: "",
+        responseDeadlineEnabled: false,
+        responseDeadline: "",
         adults: "",
         children: "",
         bbqReserved: "",
@@ -1710,6 +1769,8 @@ function blankGroupPayload(groupCode) {
 function normalizePlan(plan) {
     return {
         date: String(plan.date || ""),
+        responseDeadlineEnabled: Boolean(plan.responseDeadlineEnabled),
+        responseDeadline: String(plan.responseDeadline || ""),
         adults: String(plan.adults || ""),
         children: String(plan.children || ""),
         bbqReserved: String(plan.bbqReserved || ""),
@@ -1718,6 +1779,179 @@ function normalizePlan(plan) {
         archivedAt: String(plan.archivedAt || ""),
         updatedAt: String(plan.updatedAt || "")
     };
+}
+
+function syncResponseDeadlineVisibility() {
+    if (!elements.responseDeadlineMode || !elements.responseDeadlineField || !elements.responseDeadlineDate) {
+        return;
+    }
+    const enabled = elements.responseDeadlineMode.value === "date";
+    elements.responseDeadlineField.classList.toggle("hidden-view", !enabled);
+    elements.responseDeadlineDate.disabled = !enabled;
+    if (!enabled) {
+        elements.responseDeadlineDate.value = "";
+    }
+}
+
+async function legacyInviteFriends() {
+    if (!hasGroup()) {
+        showToast("Sin grupo", "Primero entra o crea un grupo para invitar amigos.", "error");
+        return;
+    }
+
+    const message = [
+        `ToniBBQ · Grupo ${state.groupCode}`,
+        "Unete aqui:",
+        buildGroupShareUrl()
+    ].join("\n");
+
+    const opened = openWhatsAppShare(message);
+    if (opened) {
+        showToast("WhatsApp abierto", "Ya puedes enviar la invitacion al grupo.", "success");
+        return;
+    }
+
+    const copied = await copyTextToClipboard(message);
+    showToast(
+        copied ? "Copiado" : "No se pudo compartir",
+        copied ? `Enlace del grupo copiado: ${state.groupCode}` : "Prueba a copiar el enlace manualmente.",
+        copied ? "success" : "error"
+    );
+}
+
+async function copyGroupCode() {
+    if (!hasGroup()) {
+        showToast("Sin grupo", "Primero entra o crea un grupo para copiar el codigo.", "error");
+        return;
+    }
+
+    const copied = await copyTextToClipboard(state.groupCode);
+    if (!copied) {
+        showToast("No se pudo copiar", "Copia manualmente el codigo del grupo.", "error");
+        return;
+    }
+
+    showToast("Codigo copiado", `Codigo ${state.groupCode} listo para pegar.`, "success");
+}
+
+async function legacySharePlan() {
+    if (!hasGroup()) {
+        showToast("Sin grupo", "Primero entra o crea un grupo para compartir el plan.", "error");
+        return;
+    }
+
+    const context = getCurrentPlanContext();
+    if (!context.plan.date) {
+        showToast("Falta el plan", "Guarda antes la fecha del plan para poder compartirlo.", "error");
+        return;
+    }
+
+    const lines = [
+        `ToniBBQ · Plan ${state.groupCode}`,
+        `Fecha: ${formatDate(context.plan.date)}`,
+        `Adultos: ${context.plan.adults || "0"}`,
+        `Ninos: ${context.plan.children || "0"}`,
+        `BBQ: ${context.plan.bbqReserved || "Pendiente"}`,
+        `Mesas: ${context.plan.tablesReserved || "Pendiente"}`,
+        context.plan.responseDeadlineEnabled && context.plan.responseDeadline
+            ? `Responder antes de: ${formatDate(context.plan.responseDeadline)}`
+            : "Respuesta: sin limite"
+    ];
+
+    if (context.plan.notes) {
+        lines.push(`Nota: ${context.plan.notes}`);
+    }
+
+    const message = `${lines.join("\n")}\n\nUnete aqui:\n${buildGroupShareUrl()}`;
+    const opened = openWhatsAppShare(message);
+    if (opened) {
+        showToast("WhatsApp abierto", "Ya puedes enviar el plan al grupo.", "success");
+        return;
+    }
+
+    const copied = await copyTextToClipboard(message);
+    showToast(
+        copied ? "Copiado" : "No se pudo compartir",
+        copied ? "Resumen del plan copiado" : "Prueba a copiar el enlace manualmente.",
+        copied ? "success" : "error"
+    );
+}
+
+function buildInviteMessage() {
+    const context = getCurrentPlanContext();
+    const lines = [`ToniBBQ - ${state.groupCode}`, ""];
+
+    if (!context.plan.date) {
+        lines.push("Te invito a nuestro grupo para organizar la BBQ.");
+    } else {
+        lines.push(`BBQ: ${formatDate(context.plan.date)}`);
+        lines.push(`Adultos: ${context.plan.adults || "0"}`);
+        lines.push(`Ninos: ${context.plan.children || "0"}`);
+        lines.push(`Barbacoa: ${context.plan.bbqReserved || "Pendiente"}`);
+        lines.push(`Mesas: ${context.plan.tablesReserved || "Pendiente"}`);
+        lines.push(
+            context.plan.responseDeadlineEnabled && context.plan.responseDeadline
+                ? `Responder antes de: ${formatDate(context.plan.responseDeadline)}`
+                : "Respuesta: sin limite"
+        );
+
+        if (context.plan.notes) {
+            lines.push(`Nota: ${context.plan.notes}`);
+        }
+    }
+
+    lines.push("");
+    lines.push("Unete aqui:");
+    lines.push(buildGroupShareUrl());
+    return lines.join("\n");
+}
+
+async function inviteFriends() {
+    if (!hasGroup()) {
+        showToast("Sin grupo", "Primero entra o crea un grupo para invitar amigos.", "error");
+        return;
+    }
+
+    const message = buildInviteMessage();
+    const opened = openWhatsAppShare(message);
+    if (opened) {
+        showToast("WhatsApp abierto", "Ya puedes enviar la invitacion.", "success");
+        return;
+    }
+
+    const copied = await copyTextToClipboard(message);
+    showToast(
+        copied ? "Copiado" : "No se pudo compartir",
+        copied ? "Invitacion copiada" : "Prueba a copiar el enlace manualmente.",
+        copied ? "success" : "error"
+    );
+}
+
+function buildGroupShareUrl() {
+    const url = new URL(window.location.href);
+    url.search = "";
+    url.hash = "";
+    url.searchParams.set("group", state.groupCode);
+    return url.toString();
+}
+
+function openWhatsAppShare(message) {
+    try {
+        const shareUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
+        window.open(shareUrl, "_blank", "noopener");
+        return true;
+    } catch (error) {
+        return false;
+    }
+}
+
+async function copyTextToClipboard(text) {
+    try {
+        await navigator.clipboard.writeText(text);
+        return true;
+    } catch (error) {
+        return false;
+    }
 }
 
 function normalizeArchivedPlan(entry) {
