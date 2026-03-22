@@ -397,6 +397,11 @@ body::before {
 .add-item-grid {
     grid-template-columns: 1.2fr 0.9fr 0.9fr;
     margin-top: 12px;
+    align-items: end;
+}
+
+.inline-add-button {
+    min-height: 46px;
 }
 
 label {
@@ -670,26 +675,28 @@ textarea {
 .compact-actions {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     flex-wrap: nowrap;
 }
 
 .compact-actions select {
-    min-width: 118px;
-    min-height: 36px;
-    padding: 0 10px;
-    border-radius: 12px;
+    min-width: 104px;
+    min-height: 32px;
+    padding: 0 8px;
+    border-radius: 10px;
+    font-size: 0.82rem;
 }
 
 .compact-action {
-    min-height: 36px;
-    padding: 0 10px;
-    border-radius: 12px;
-    font-size: 0.88rem;
+    min-height: 32px;
+    padding: 0 8px;
+    border-radius: 10px;
+    font-size: 0.8rem;
+    letter-spacing: -0.01em;
 }
 
 .danger-action {
-    min-width: 36px;
+    min-width: 32px;
     justify-content: center;
 }
 
