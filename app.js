@@ -2,12 +2,12 @@ const STORAGE_KEY = "tonibbq-state-v4";
 const TOAST_DURATION_MS = 3200;
 
 const defaultItems = [
+    { name: "Carbon", quantity: "", ownerId: "" },
     { name: "Hamburguesas", quantity: "", ownerId: "" },
     { name: "Pan hamburguesas", quantity: "", ownerId: "" },
     { name: "Perritos", quantity: "", ownerId: "" },
     { name: "Pan perritos", quantity: "", ownerId: "" },
     { name: "Carne adultos", quantity: "", ownerId: "" },
-    { name: "Carbon", quantity: "", ownerId: "" },
     { name: "Pan barras", quantity: "", ownerId: "" },
     { name: "Hielos", quantity: "", ownerId: "" },
     { name: "Cerveza", quantity: "", ownerId: "" },
