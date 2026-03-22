@@ -100,7 +100,7 @@ body::before {
     align-items: flex-start;
     pointer-events: none;
     z-index: 1;
-    background-image: url("./hero-tonibbq.png");
+    background-image: url("./hero-tonibbq.jpg");
     background-repeat: no-repeat;
     background-position: center 8px;
     background-size: min(560px, 68%);

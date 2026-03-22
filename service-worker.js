@@ -6,8 +6,11 @@ const APP_SHELL = [
     "./app.js",
     "./config.js",
     "./manifest.webmanifest",
+    "./icon-192.png",
+    "./icon-512.png",
+    "./apple-touch-icon.png",
     "./icon.svg",
-    "./hero-tonibbq.png"
+    "./hero-tonibbq.jpg"
 ];
 
 self.addEventListener("install", (event) => {
