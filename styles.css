@@ -875,6 +875,20 @@ textarea {
     cursor: pointer;
 }
 
+.compact-actions .inline-action.compact-action,
+.compact-actions .inline-button.compact-action {
+    min-height: 30px;
+    padding: 0 7px;
+    border-radius: 9px;
+    font-size: 0.74rem;
+    letter-spacing: -0.02em;
+}
+
+.compact-actions .inline-button.compact-action.danger-action {
+    min-width: 28px;
+    padding: 0 4px;
+}
+
 .assignments-grid {
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
@@ -1112,6 +1126,13 @@ textarea {
     }
 
     .compact-action {
+        min-height: 28px;
+        padding: 0 6px;
+        font-size: 0.69rem;
+    }
+
+    .compact-actions .inline-action.compact-action,
+    .compact-actions .inline-button.compact-action {
         min-height: 28px;
         padding: 0 6px;
         font-size: 0.69rem;
