@@ -88,7 +88,8 @@ const elements = {
     newItemOwner: document.getElementById("newItemOwner"),
     addItemButton: document.getElementById("addItemButton"),
     seedItemsButton: document.getElementById("seedItemsButton"),
-    goToChatButton: document.getElementById("goToChatButton"),
+    toggleAddItemButton: document.getElementById("toggleAddItemButton"),
+    addItemPanel: document.getElementById("addItemPanel"),
     shoppingList: document.getElementById("shoppingList"),
     assignmentsGrid: document.getElementById("assignmentsGrid"),
     itemsCounter: document.getElementById("itemsCounter"),
@@ -106,7 +107,6 @@ const elements = {
     overviewSection: document.getElementById("overviewSection"),
     overviewGrid: document.getElementById("overviewGrid"),
     overviewNote: document.getElementById("overviewNote"),
-    shoppingFilters: document.getElementById("shoppingFilters"),
     installAppButton: document.getElementById("installAppButton"),
     toastStack: document.getElementById("toastStack"),
     liveRegion: document.getElementById("liveRegion")
@@ -149,10 +149,6 @@ function bindEvents() {
         withButtonState(elements.seedItemsButton, "Cargando pack...", seedItems);
     });
 
-    elements.goToChatButton.addEventListener("click", () => {
-        setCurrentView("chat");
-    });
-
     elements.sendMessageButton.addEventListener("click", () => {
         withButtonState(elements.sendMessageButton, "Enviando...", sendMessage);
     });
@@ -164,11 +160,10 @@ function bindEvents() {
         elements.chatPhotoInput.click();
     });
 
-    elements.shoppingFilters.querySelectorAll("[data-filter]").forEach((button) => {
-        button.addEventListener("click", () => {
-            uiState.itemFilter = button.getAttribute("data-filter") || "all";
-            renderItems();
-        });
+    elements.toggleAddItemButton.addEventListener("click", () => {
+        const expanded = elements.toggleAddItemButton.getAttribute("aria-expanded") === "true";
+        elements.toggleAddItemButton.setAttribute("aria-expanded", String(!expanded));
+        elements.addItemPanel.classList.toggle("hidden-view", expanded);
     });
 
     elements.chatMessage.addEventListener("keydown", (event) => {
@@ -392,6 +387,8 @@ async function addItem() {
 
     elements.newItemName.value = "";
     elements.newItemQty.value = "";
+    elements.toggleAddItemButton.setAttribute("aria-expanded", "false");
+    elements.addItemPanel.classList.add("hidden-view");
     persistAndRender();
     await syncGroup("added an item");
     showToast("Compra anadida", `${name} ya esta en la lista compartida.`, "success");
@@ -407,12 +404,11 @@ async function seedItems() {
         return;
     }
 
-    const availableOwners = state.friends.map((friend) => friend.id);
     state.items = defaultItems.map((item, index) => normalizeItem({
         id: createId(),
         name: item.name,
         quantity: item.quantity,
-        ownerId: availableOwners.length ? availableOwners[index % availableOwners.length] : "",
+        ownerId: "",
         updatedAt: nowIso(),
         completedAt: "",
         deletedAt: ""
@@ -775,25 +771,14 @@ function renderOwnerOptions() {
 function renderItems() {
     const context = getCurrentPlanContext();
     const activeItems = context.items;
-    const visibleItems = filterItemsByView(activeItems);
     const pendingUnassigned = activeItems.filter((item) => !item.completedAt && !item.ownerId);
     const pendingAssigned = activeItems.filter((item) => !item.completedAt && item.ownerId);
     const doneItems = activeItems.filter((item) => item.completedAt);
 
     elements.itemsCounter.textContent = `${activeItems.length} items`;
 
-    elements.shoppingFilters.querySelectorAll("[data-filter]").forEach((button) => {
-        button.classList.toggle("is-active", button.getAttribute("data-filter") === uiState.itemFilter);
-    });
-
-    if (!visibleItems.length) {
-        elements.shoppingList.innerHTML = '<div class="empty-state">No hay items para este filtro. Prueba con otro estado o carga el pack BBQ.</div>';
-        return;
-    }
-
-    if (uiState.itemFilter !== "all") {
-        elements.shoppingList.innerHTML = visibleItems.map(renderShoppingItemCard).join("");
-        wireShoppingActions();
+    if (!activeItems.length) {
+        elements.shoppingList.innerHTML = '<div class="empty-state">Todavia no hay compras. Usa + o carga el pack BBQ.</div>';
         return;
     }
 

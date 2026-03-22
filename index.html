@@ -155,17 +155,13 @@
                         <p class="eyebrow">Lista de compra</p>
                         <h2 id="shoppingHeading">Asignar quien compra cada cosa</h2>
                     </div>
-                    <div class="total-badge" id="itemsCounter">0 items</div>
+                    <div class="shopping-head-actions">
+                        <div class="total-badge" id="itemsCounter">0 items</div>
+                        <button class="button fab-button" id="toggleAddItemButton" type="button" aria-expanded="false" aria-controls="addItemPanel">+</button>
+                    </div>
                 </div>
 
-                <div class="filter-row" id="shoppingFilters" role="tablist" aria-label="Filtros de compra">
-                    <button class="filter-chip is-active" type="button" data-filter="all">Todos</button>
-                    <button class="filter-chip" type="button" data-filter="pending">Pendientes</button>
-                    <button class="filter-chip" type="button" data-filter="done">Comprados</button>
-                    <button class="filter-chip" type="button" data-filter="unassigned">Sin asignar</button>
-                </div>
-
-                <div class="form-grid compact-grid add-item-grid">
+                <div class="form-grid compact-grid add-item-grid hidden-view" id="addItemPanel">
                     <label>
                         <span>Nuevo item</span>
                         <input id="newItemName" type="text" placeholder="Ej. Carbon vegetal">
@@ -183,7 +179,6 @@
                 <div class="action-row">
                     <button class="button primary" id="addItemButton">Anadir item</button>
                     <button class="button secondary" id="seedItemsButton">Cargar pack BBQ</button>
-                    <button class="button secondary" id="goToChatButton" type="button">Ir al chat</button>
                 </div>
 
                 <div class="shopping-list" id="shoppingList"></div>

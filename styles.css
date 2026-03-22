@@ -364,6 +364,21 @@ body::before {
     border: 1px solid rgba(125, 242, 170, 0.18);
 }
 
+.shopping-head-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.fab-button {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0;
+    border-radius: 999px;
+    font-size: 1.5rem;
+    line-height: 1;
+}
+
 .group-chip.is-archived {
     color: #ffd27d;
     border-color: rgba(255, 210, 125, 0.3);
@@ -381,6 +396,7 @@ body::before {
 
 .add-item-grid {
     grid-template-columns: 1.2fr 0.9fr 0.9fr;
+    margin-top: 12px;
 }
 
 label {
