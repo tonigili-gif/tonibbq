@@ -2,23 +2,18 @@ const STORAGE_KEY = "tonibbq-state-v4";
 const TOAST_DURATION_MS = 3200;
 
 const defaultItems = [
-    { name: "Carbon", quantity: "", ownerId: "" },
     { name: "Hamburguesas", quantity: "", ownerId: "" },
-    { name: "Pan de hamburguesa", quantity: "", ownerId: "" },
-    { name: "Ketchup", quantity: "", ownerId: "" },
+    { name: "Pan hamburguesas", quantity: "", ownerId: "" },
     { name: "Perritos", quantity: "", ownerId: "" },
-    { name: "Pan de perrito", quantity: "", ownerId: "" },
-    { name: "Panceta", quantity: "", ownerId: "" },
-    { name: "Chorizo", quantity: "", ownerId: "" },
-    { name: "Pinchos de pollo", quantity: "", ownerId: "" },
-    { name: "Secreto", quantity: "", ownerId: "" },
-    { name: "Chuletones", quantity: "", ownerId: "" },
-    { name: "Pan de barra", quantity: "", ownerId: "" },
+    { name: "Pan perritos", quantity: "", ownerId: "" },
+    { name: "Carne adultos", quantity: "", ownerId: "" },
+    { name: "Pan barras", quantity: "", ownerId: "" },
     { name: "Hielos", quantity: "", ownerId: "" },
-    { name: "Cervezas", quantity: "", ownerId: "" },
+    { name: "Cerveza", quantity: "", ownerId: "" },
     { name: "Vino", quantity: "", ownerId: "" },
     { name: "Postre", quantity: "", ownerId: "" },
-    { name: "Cafe", quantity: "", ownerId: "" }
+    { name: "Cafe", quantity: "", ownerId: "" },
+    { name: "Aperitivo", quantity: "", ownerId: "" }
 ];
 
 const initialState = {
@@ -87,7 +82,6 @@ const elements = {
     newItemQty: document.getElementById("newItemQty"),
     newItemOwner: document.getElementById("newItemOwner"),
     addItemButton: document.getElementById("addItemButton"),
-    seedItemsButton: document.getElementById("seedItemsButton"),
     toggleAddItemButton: document.getElementById("toggleAddItemButton"),
     addItemPanel: document.getElementById("addItemPanel"),
     shoppingList: document.getElementById("shoppingList"),
@@ -143,10 +137,6 @@ function bindEvents() {
 
     elements.addItemButton.addEventListener("click", () => {
         withButtonState(elements.addItemButton, "Anadiendo...", addItem);
-    });
-
-    elements.seedItemsButton.addEventListener("click", () => {
-        withButtonState(elements.seedItemsButton, "Cargando pack...", seedItems);
     });
 
     elements.sendMessageButton.addEventListener("click", () => {
@@ -341,6 +331,11 @@ async function savePlan() {
         archivedAt: "",
         updatedAt: nowIso()
     });
+
+    if (!getActiveItems().length) {
+        state.items = createDefaultPackItems();
+    }
+
     persistAndRender();
     const autoArchived = await maybeArchiveExpiredPlan();
     if (!autoArchived) {
@@ -394,31 +389,6 @@ async function addItem() {
     showToast("Compra anadida", `${name} ya esta en la lista compartida.`, "success");
 }
 
-async function seedItems() {
-    if (!hasGroup()) {
-        showToast("Sin grupo activo", "Crea o entra en un grupo antes de cargar el pack.", "error");
-        return;
-    }
-
-    if (!ensurePlanEditable("cargar el pack")) {
-        return;
-    }
-
-    state.items = defaultItems.map((item, index) => normalizeItem({
-        id: createId(),
-        name: item.name,
-        quantity: item.quantity,
-        ownerId: "",
-        updatedAt: nowIso(),
-        completedAt: "",
-        deletedAt: ""
-    }));
-    uiState.editingItemId = "";
-    persistAndRender();
-    await syncGroup("loaded the bbq pack");
-    showToast("Pack BBQ cargado", "Ya tienes el pack base listo para repartir.", "success");
-}
-
 function render() {
     renderViewState();
     renderSetupGuide();
@@ -432,6 +402,18 @@ function render() {
     renderMessages();
     renderLocks();
     renderInstallButton();
+}
+
+function createDefaultPackItems() {
+    return defaultItems.map((item) => normalizeItem({
+        id: createId(),
+        name: item.name,
+        quantity: item.quantity,
+        ownerId: "",
+        updatedAt: nowIso(),
+        completedAt: "",
+        deletedAt: ""
+    }));
 }
 
 function renderViewState() {
