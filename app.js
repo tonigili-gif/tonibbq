@@ -29,7 +29,6 @@ const initialState = {
 };
 
 const uiState = {
-    itemFilter: "all",
     editingItemId: "",
     deferredInstallPrompt: null,
     archivingInFlight: false,
@@ -65,9 +64,7 @@ const elements = {
     friendName: document.getElementById("friendName"),
     groupCode: document.getElementById("groupCode"),
     joinGroupButton: document.getElementById("joinGroupButton"),
-    createDemoButton: document.getElementById("createDemoButton"),
     shareGroupButton: document.getElementById("shareGroupButton"),
-    copyGroupCodeButton: document.getElementById("copyGroupCodeButton"),
     activeGroupChip: document.getElementById("activeGroupChip"),
     appNav: document.getElementById("appNav"),
     friendStrip: document.getElementById("friendStrip"),
@@ -129,16 +126,8 @@ function bindEvents() {
         withButtonState(elements.joinGroupButton, "Entrando...", joinGroup);
     });
 
-    elements.createDemoButton.addEventListener("click", () => {
-        withButtonState(elements.createDemoButton, "Preparando demo...", createDemoGroup);
-    });
-
     elements.shareGroupButton.addEventListener("click", () => {
         withButtonState(elements.shareGroupButton, "Preparando...", inviteFriends);
-    });
-
-    elements.copyGroupCodeButton.addEventListener("click", () => {
-        withButtonState(elements.copyGroupCodeButton, "Copiando...", copyGroupCode);
     });
 
     elements.goToGroupButton.addEventListener("click", () => {
@@ -299,47 +288,6 @@ async function joinGroup() {
     maybeRequestNotificationPermission();
     setCurrentView("plan");
     showToast("Grupo listo", `Ya estas dentro de ${groupCode}.`, "success");
-}
-
-async function createDemoGroup() {
-    state.groupCode = "SOMONTES-2026";
-    state.friends = [
-        createFriend("Toni"),
-        createFriend("Laura"),
-        createFriend("Javi"),
-        createFriend("Marta")
-    ];
-    state.friends[0].deviceId = state.clientId;
-    state.currentFriendId = state.friends[0].id;
-    state.archivedPlans = [];
-    uiState.selectedArchivedPlanId = "";
-    state.plan = normalizePlan({
-        date: getUpcomingSaturday(),
-        responseDeadlineEnabled: false,
-        responseDeadline: "",
-        adults: "10",
-        children: "4",
-        bbqReserved: "BBQ 2 y 3",
-        tablesReserved: "Mesa 6 y 7",
-        notes: "Quedar a las 13:00. Llevar hielos extra y pinzas.",
-        updatedAt: nowIso()
-    });
-    state.items = defaultItems.map((item, index) => normalizeItem({
-        id: createId(),
-        name: item.name,
-        quantity: item.quantity,
-        ownerId: state.friends[index % state.friends.length].id,
-        updatedAt: nowIso(),
-        completedAt: "",
-        deletedAt: ""
-    }));
-    state.messages = [];
-    persistAndRender();
-    await syncGroup("created the demo group");
-    subscribeToGroup(state.groupCode);
-    maybeRequestNotificationPermission();
-    setCurrentView("plan");
-    showToast("Demo lista", "Hemos cargado una BBQ de ejemplo para que pruebes la app.", "success");
 }
 
 async function savePlan() {
@@ -623,14 +571,13 @@ function getOverviewNote(pendingItems, unassignedItems) {
 
 function renderGroup() {
     elements.activeGroupChip.textContent = hasArchivedPlan()
-        ? `${state.groupCode || "Sin grupo"} · Archivado`
+        ? `${state.groupCode || "Sin grupo"} - Archivado`
         : (state.groupCode || "Sin grupo");
     elements.activeGroupChip.classList.toggle("is-archived", hasArchivedPlan());
     elements.shareGroupButton.disabled = !hasGroup();
-    elements.copyGroupCodeButton.disabled = !hasGroup();
 
     if (!state.friends.length) {
-        elements.friendStrip.innerHTML = '<div class="empty-state">Todavia no hay amigos en este grupo. Puedes arrancar con Crear grupo demo.</div>';
+        elements.friendStrip.innerHTML = "";
         return;
     }
 
@@ -642,11 +589,10 @@ function renderGroup() {
         .map((friend) => {
             const isCurrent = friend.id === state.currentFriendId;
             return `
-                <article class="friend-card">
-                    <span>${isCurrent ? "Tu movil" : "Amigo"}</span>
+                <div class="friend-pill ${isCurrent ? "is-current" : ""}">
                     <strong>${escapeHtml(friend.name)}</strong>
-                    <div>${state.groupCode || "Sin codigo"}</div>
-                </article>
+                    <span>${isCurrent ? "Tu movil" : "Invitado"}</span>
+                </div>
             `;
         })
         .join("");
@@ -1303,19 +1249,6 @@ function getActiveItems() {
     return state.items.filter((item) => !item.deletedAt);
 }
 
-function filterItemsByView(items) {
-    if (uiState.itemFilter === "pending") {
-        return items.filter((item) => !item.completedAt);
-    }
-    if (uiState.itemFilter === "done") {
-        return items.filter((item) => item.completedAt);
-    }
-    if (uiState.itemFilter === "unassigned") {
-        return items.filter((item) => !item.ownerId);
-    }
-    return items;
-}
-
 function getActiveMessages() {
     return state.messages
         .filter((message) => !message.deletedAt)
@@ -1793,90 +1726,6 @@ function syncResponseDeadlineVisibility() {
     }
 }
 
-async function legacyInviteFriends() {
-    if (!hasGroup()) {
-        showToast("Sin grupo", "Primero entra o crea un grupo para invitar amigos.", "error");
-        return;
-    }
-
-    const message = [
-        `ToniBBQ · Grupo ${state.groupCode}`,
-        "Unete aqui:",
-        buildGroupShareUrl()
-    ].join("\n");
-
-    const opened = openWhatsAppShare(message);
-    if (opened) {
-        showToast("WhatsApp abierto", "Ya puedes enviar la invitacion al grupo.", "success");
-        return;
-    }
-
-    const copied = await copyTextToClipboard(message);
-    showToast(
-        copied ? "Copiado" : "No se pudo compartir",
-        copied ? `Enlace del grupo copiado: ${state.groupCode}` : "Prueba a copiar el enlace manualmente.",
-        copied ? "success" : "error"
-    );
-}
-
-async function copyGroupCode() {
-    if (!hasGroup()) {
-        showToast("Sin grupo", "Primero entra o crea un grupo para copiar el codigo.", "error");
-        return;
-    }
-
-    const copied = await copyTextToClipboard(state.groupCode);
-    if (!copied) {
-        showToast("No se pudo copiar", "Copia manualmente el codigo del grupo.", "error");
-        return;
-    }
-
-    showToast("Codigo copiado", `Codigo ${state.groupCode} listo para pegar.`, "success");
-}
-
-async function legacySharePlan() {
-    if (!hasGroup()) {
-        showToast("Sin grupo", "Primero entra o crea un grupo para compartir el plan.", "error");
-        return;
-    }
-
-    const context = getCurrentPlanContext();
-    if (!context.plan.date) {
-        showToast("Falta el plan", "Guarda antes la fecha del plan para poder compartirlo.", "error");
-        return;
-    }
-
-    const lines = [
-        `ToniBBQ · Plan ${state.groupCode}`,
-        `Fecha: ${formatDate(context.plan.date)}`,
-        `Adultos: ${context.plan.adults || "0"}`,
-        `Ninos: ${context.plan.children || "0"}`,
-        `BBQ: ${context.plan.bbqReserved || "Pendiente"}`,
-        `Mesas: ${context.plan.tablesReserved || "Pendiente"}`,
-        context.plan.responseDeadlineEnabled && context.plan.responseDeadline
-            ? `Responder antes de: ${formatDate(context.plan.responseDeadline)}`
-            : "Respuesta: sin limite"
-    ];
-
-    if (context.plan.notes) {
-        lines.push(`Nota: ${context.plan.notes}`);
-    }
-
-    const message = `${lines.join("\n")}\n\nUnete aqui:\n${buildGroupShareUrl()}`;
-    const opened = openWhatsAppShare(message);
-    if (opened) {
-        showToast("WhatsApp abierto", "Ya puedes enviar el plan al grupo.", "success");
-        return;
-    }
-
-    const copied = await copyTextToClipboard(message);
-    showToast(
-        copied ? "Copiado" : "No se pudo compartir",
-        copied ? "Resumen del plan copiado" : "Prueba a copiar el enlace manualmente.",
-        copied ? "success" : "error"
-    );
-}
-
 function buildInviteMessage() {
     const context = getCurrentPlanContext();
     const lines = [`ToniBBQ - ${state.groupCode}`, ""];
@@ -2224,14 +2073,6 @@ function loadImage(src) {
     });
 }
 
-function getUpcomingSaturday() {
-    const date = new Date();
-    const day = date.getDay();
-    const distance = (6 - day + 7) % 7 || 7;
-    date.setDate(date.getDate() + distance);
-    return date.toISOString().slice(0, 10);
-}
-
 function getLastSeenMessageId(messages) {
     const list = Array.isArray(messages) ? messages : [];
     const activeMessages = list
@@ -2291,3 +2132,4 @@ function escapeHtml(value) {
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&#39;");
 }
+

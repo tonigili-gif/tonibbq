@@ -1,4 +1,4 @@
-const CACHE_NAME = "tonibbq-shell-v2";
+const CACHE_NAME = "tonibbq-shell-v3";
 const APP_SHELL = [
     "./",
     "./index.html",
@@ -6,7 +6,8 @@ const APP_SHELL = [
     "./app.js",
     "./config.js",
     "./manifest.webmanifest",
-    "./icon.svg"
+    "./icon.svg",
+    "./hero-tonibbq.png"
 ];
 
 self.addEventListener("install", (event) => {
@@ -34,25 +35,57 @@ self.addEventListener("fetch", (event) => {
         return;
     }
 
-    event.respondWith(
-        caches.match(event.request).then((cached) => {
-            if (cached) {
-                return cached;
-            }
+    const requestUrl = new URL(event.request.url);
+    const isApiRequest =
+        requestUrl.origin === self.location.origin &&
+        requestUrl.pathname.startsWith("/api/");
+    const isAppShellRequest =
+        requestUrl.origin === self.location.origin &&
+        (
+            APP_SHELL.some((asset) => requestUrl.pathname.endsWith(asset.replace("./", "/"))) ||
+            requestUrl.pathname === "/"
+        );
 
-            return fetch(event.request)
-                .then((response) => {
-                    if (!response || response.status !== 200 || response.type !== "basic") {
-                        return response;
-                    }
+    if (isApiRequest) {
+        return;
+    }
 
-                    const cloned = response.clone();
-                    caches.open(CACHE_NAME).then((cache) => {
-                        cache.put(event.request, cloned);
-                    });
-                    return response;
-                })
-                .catch(() => caches.match("./index.html"));
-        })
-    );
+    if (isAppShellRequest) {
+        event.respondWith(networkFirst(event.request));
+        return;
+    }
+
+    event.respondWith(cacheFirst(event.request));
 });
+
+async function networkFirst(request) {
+    try {
+        const response = await fetch(request);
+        if (response && response.status === 200 && response.type === "basic") {
+            const cache = await caches.open(CACHE_NAME);
+            await cache.put(request, response.clone());
+        }
+        return response;
+    } catch (error) {
+        const cached = await caches.match(request);
+        return cached || caches.match("./index.html");
+    }
+}
+
+async function cacheFirst(request) {
+    const cached = await caches.match(request);
+    if (cached) {
+        return cached;
+    }
+
+    try {
+        const response = await fetch(request);
+        if (response && response.status === 200 && response.type === "basic") {
+            const cache = await caches.open(CACHE_NAME);
+            await cache.put(request, response.clone());
+        }
+        return response;
+    } catch (error) {
+        return caches.match("./index.html");
+    }
+}

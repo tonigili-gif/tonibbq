@@ -384,6 +384,12 @@ body::before {
     border-color: rgba(255, 210, 125, 0.3);
 }
 
+.group-intro {
+    margin: -2px 0 14px;
+    color: var(--muted);
+    line-height: 1.45;
+}
+
 .form-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -508,6 +514,12 @@ textarea {
     border: 1px solid rgba(236, 255, 243, 0.08);
 }
 
+.button.tertiary {
+    color: var(--green-2);
+    background: rgba(125, 242, 170, 0.08);
+    border: 1px solid rgba(125, 242, 170, 0.16);
+}
+
 .button:disabled,
 .inline-button:disabled,
 .filter-chip:disabled {
@@ -526,7 +538,9 @@ textarea {
 }
 
 .friend-strip {
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 8px;
+    margin-top: 12px;
 }
 
 .friend-card,
@@ -551,6 +565,34 @@ textarea {
 
 .friend-card span {
     color: var(--green-2);
+}
+
+.friend-pill {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 14px;
+    background: rgba(236, 255, 243, 0.05);
+    border: 1px solid rgba(125, 242, 170, 0.1);
+}
+
+.friend-pill strong {
+    font-size: 0.92rem;
+}
+
+.friend-pill span {
+    color: var(--green-2);
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+}
+
+.friend-pill.is-current {
+    background: rgba(125, 242, 170, 0.11);
+    border-color: rgba(125, 242, 170, 0.2);
 }
 
 .summary-card {
