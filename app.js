@@ -25,6 +25,7 @@ const initialState = {
     plan: blankPlan(),
     archivedPlans: [],
     friends: [],
+    expenses: [],
     items: [],
     messages: []
 };
@@ -81,6 +82,12 @@ const elements = {
     goToGroupButton: document.getElementById("goToGroupButton"),
     savePlanButton: document.getElementById("savePlanButton"),
     planSummary: document.getElementById("planSummary"),
+    expensesSection: document.getElementById("expensesSection"),
+    expensesBadge: document.getElementById("expensesBadge"),
+    expensesOverview: document.getElementById("expensesOverview"),
+    expensesNotice: document.getElementById("expensesNotice"),
+    expensesList: document.getElementById("expensesList"),
+    expensesSettlement: document.getElementById("expensesSettlement"),
     newItemName: document.getElementById("newItemName"),
     newItemQty: document.getElementById("newItemQty"),
     newItemOwner: document.getElementById("newItemOwner"),
@@ -383,6 +390,7 @@ function render() {
     renderGroup();
     renderPlan();
     renderArchivedPlans();
+    renderExpenses();
     renderOwnerOptions();
     renderItems();
     renderAssignments();
@@ -413,6 +421,7 @@ function renderViewState() {
     const isGroup = uiState.currentView === "group";
     const isPlan = uiState.currentView === "plan";
     const isShopping = uiState.currentView === "shopping";
+    const isExpenses = uiState.currentView === "expenses";
     const isChat = uiState.currentView === "chat";
 
     toggleSection(elements.summarySection, isSummary);
@@ -421,6 +430,7 @@ function renderViewState() {
     toggleSection(document.getElementById("planSection"), isPlan);
     toggleSection(document.getElementById("shoppingSection"), isShopping);
     toggleSection(document.querySelector('[aria-labelledby="assignHeading"]'), isShopping);
+    toggleSection(elements.expensesSection, isExpenses);
     toggleSection(document.getElementById("chatSection"), isChat);
 
     elements.appNav.querySelectorAll("[data-view]").forEach((button) => {
@@ -447,7 +457,7 @@ function getAllowedViews() {
         return ["group"];
     }
 
-    return ["group", "plan", "shopping", "chat", "summary"];
+    return ["group", "plan", "shopping", "expenses", "chat", "summary"];
 }
 
 function getCurrentPlanContext() {
@@ -456,6 +466,7 @@ function getCurrentPlanContext() {
         return {
             plan: archived.plan,
             friends: archived.friends,
+            expenses: archived.expenses || [],
             items: archived.items.filter((item) => !item.deletedAt),
             messages: archived.messages.filter((message) => !message.deletedAt),
             archived: true,
@@ -466,6 +477,7 @@ function getCurrentPlanContext() {
     return {
         plan: state.plan,
         friends: state.friends,
+        expenses: state.expenses,
         items: getActiveItems(),
         messages: getActiveMessages(),
         archived: false,
@@ -644,6 +656,267 @@ function renderPlan() {
     syncResponseDeadlineVisibility();
 }
 
+function renderExpenses() {
+    if (!elements.expensesList || !elements.expensesOverview || !elements.expensesSettlement || !elements.expensesNotice) {
+        return;
+    }
+
+    const context = getCurrentPlanContext();
+    const entries = getExpenseEntriesForContext(context);
+    const summary = buildExpenseSummary(context, entries);
+
+    elements.expensesBadge.textContent = formatCurrency(summary.totalPaid);
+    elements.expensesOverview.innerHTML = [
+        {
+            label: "Total gastado",
+            value: formatCurrency(summary.totalPaid),
+            detail: "Suma de todo lo pagado"
+        },
+        {
+            label: "Cuota por adulto",
+            value: summary.totalAdults ? formatCurrency(summary.sharePerAdult) : "0 EUR",
+            detail: summary.totalAdults ? `${summary.totalAdults} adultos confirmados` : "Confirma participantes"
+        },
+        {
+            label: "Movimientos",
+            value: String(summary.settlements.length),
+            detail: summary.settlements.length ? "Transferencias propuestas" : "Sin ajustes pendientes"
+        }
+    ].map((card) => `
+        <article class="overview-card">
+            <strong>${escapeHtml(card.label)}</strong>
+            <div class="metric">${escapeHtml(card.value)}</div>
+            <p>${escapeHtml(card.detail)}</p>
+        </article>
+    `).join("");
+
+    const notice = buildExpensesNotice(summary);
+    elements.expensesNotice.textContent = notice;
+    elements.expensesNotice.classList.toggle("hidden-view", !notice);
+
+    elements.expensesList.innerHTML = entries.map((entry) => {
+        const friend = context.friends.find((item) => item.id === entry.friendId);
+        const row = summary.rows.find((item) => item.friendId === entry.friendId);
+        const adultsValue = entry.included ? sanitizeAdultsCount(entry.adultsCount) : "0";
+        const paidValue = sanitizeMoney(entry.paid);
+        return `
+            <article class="shopping-item expense-item ${context.archived ? "is-readonly" : ""}">
+                <div class="expense-main">
+                    <div class="compact-title-wrap">
+                        <div class="shopping-title-line">
+                            <strong>${escapeHtml(friend ? friend.name : "Participante")}</strong>
+                            <span class="shopping-owner-inline">${entry.included ? `${escapeHtml(adultsValue)} adulto${adultsValue === "1" ? "" : "s"}` : "No participa"}</span>
+                        </div>
+                        <div class="item-meta">
+                            ${row ? `Debe ${escapeHtml(formatCurrency(row.expectedShare))} · Saldo ${escapeHtml(formatSignedCurrency(row.balance))}` : "Sin datos"}
+                        </div>
+                    </div>
+                </div>
+                <div class="expense-fields">
+                    <label class="expense-toggle">
+                        <input type="checkbox" ${entry.included ? "checked" : ""} ${context.archived ? "disabled" : ""} data-expense-include="${escapeHtml(entry.friendId)}">
+                        <span>Participa</span>
+                    </label>
+                    <label>
+                        <span>Adultos</span>
+                        <input type="number" min="0" step="1" value="${escapeHtml(adultsValue)}" ${context.archived ? "disabled" : ""} data-expense-adults="${escapeHtml(entry.friendId)}">
+                    </label>
+                    <label>
+                        <span>Pagado</span>
+                        <input type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(paidValue)}" ${context.archived ? "disabled" : ""} data-expense-paid="${escapeHtml(entry.friendId)}">
+                    </label>
+                </div>
+            </article>
+        `;
+    }).join("");
+
+    elements.expensesSettlement.innerHTML = renderExpenseSettlement(summary);
+
+    if (context.archived) {
+        return;
+    }
+
+    document.querySelectorAll("[data-expense-include]").forEach((input) => {
+        input.addEventListener("change", async (event) => {
+            const friendId = event.target.getAttribute("data-expense-include") || "";
+            const included = event.target.checked;
+            const current = getExpenseEntry(friendId);
+            const nextAdults = included ? sanitizeAdultsCount(current.adultsCount || "1") : "0";
+            await updateExpenseEntry(friendId, { included, adultsCount: nextAdults });
+        });
+    });
+
+    document.querySelectorAll("[data-expense-adults]").forEach((input) => {
+        input.addEventListener("change", async (event) => {
+            const friendId = event.target.getAttribute("data-expense-adults") || "";
+            const adultsCount = sanitizeAdultsCount(event.target.value);
+            await updateExpenseEntry(friendId, {
+                included: Number(adultsCount) > 0,
+                adultsCount
+            });
+        });
+    });
+
+    document.querySelectorAll("[data-expense-paid]").forEach((input) => {
+        input.addEventListener("change", async (event) => {
+            const friendId = event.target.getAttribute("data-expense-paid") || "";
+            await updateExpenseEntry(friendId, {
+                paid: sanitizeMoney(event.target.value)
+            });
+        });
+    });
+}
+
+function getExpenseEntriesForContext(context) {
+    const existing = new Map((context.expenses || []).map((entry) => {
+        const normalized = normalizeExpenseEntry(entry);
+        return [normalized.friendId, normalized];
+    }));
+
+    return context.friends.map((friend) => {
+        const current = existing.get(friend.id);
+        if (current) {
+            return current;
+        }
+        return normalizeExpenseEntry({
+            friendId: friend.id,
+            included: !context.archived,
+            adultsCount: "1",
+            paid: "",
+            updatedAt: ""
+        });
+    });
+}
+
+function buildExpenseSummary(context, entries) {
+    const planAdults = clamp(parseInteger(context.plan.adults), 0, 999);
+    const rows = entries.map((entry) => {
+        const adultsCount = entry.included ? clamp(parseInteger(entry.adultsCount), 0, 999) : 0;
+        const paid = parseMoney(entry.paid);
+        return {
+            friendId: entry.friendId,
+            included: Boolean(entry.included),
+            adultsCount,
+            paid,
+            expectedShare: 0,
+            balance: paid
+        };
+    });
+
+    const totalAdults = rows.reduce((sum, row) => sum + row.adultsCount, 0);
+    const totalPaid = roundCurrency(rows.reduce((sum, row) => sum + row.paid, 0));
+    const sharePerAdult = totalAdults ? roundCurrency(totalPaid / totalAdults) : 0;
+
+    rows.forEach((row) => {
+        row.expectedShare = roundCurrency(row.adultsCount * sharePerAdult);
+        row.balance = roundCurrency(row.paid - row.expectedShare);
+    });
+
+    return {
+        planAdults,
+        totalAdults,
+        totalPaid,
+        sharePerAdult,
+        rows,
+        settlements: buildExpenseSettlements(rows)
+    };
+}
+
+function buildExpenseSettlements(rows) {
+    const creditors = rows
+        .filter((row) => row.balance > 0.009)
+        .map((row) => ({ friendId: row.friendId, amount: row.balance }))
+        .sort((left, right) => right.amount - left.amount);
+    const debtors = rows
+        .filter((row) => row.balance < -0.009)
+        .map((row) => ({ friendId: row.friendId, amount: Math.abs(row.balance) }))
+        .sort((left, right) => right.amount - left.amount);
+    const moves = [];
+
+    while (creditors.length && debtors.length) {
+        const creditor = creditors[0];
+        const debtor = debtors[0];
+        const amount = roundCurrency(Math.min(creditor.amount, debtor.amount));
+        if (amount <= 0) {
+            break;
+        }
+        moves.push({
+            fromFriendId: debtor.friendId,
+            toFriendId: creditor.friendId,
+            amount
+        });
+        creditor.amount = roundCurrency(creditor.amount - amount);
+        debtor.amount = roundCurrency(debtor.amount - amount);
+        if (creditor.amount <= 0.009) {
+            creditors.shift();
+        }
+        if (debtor.amount <= 0.009) {
+            debtors.shift();
+        }
+    }
+
+    return moves;
+}
+
+function renderExpenseSettlement(summary) {
+    const context = getCurrentPlanContext();
+    if (!summary.totalPaid) {
+        return '<div class="empty-state">Anade lo que ha pagado cada persona para calcular saldos.</div>';
+    }
+    if (!summary.totalAdults) {
+        return '<div class="empty-state">Marca participantes y cuantos adultos representa cada uno para repartir los gastos.</div>';
+    }
+
+    if (!summary.settlements.length) {
+        return `
+            <div class="history-detail-head">
+                <div>
+                    <p class="eyebrow">Liquidacion</p>
+                    <h3>Todo equilibrado</h3>
+                </div>
+            </div>
+            <div class="empty-state">No hace falta pasar dinero: los saldos ya estan compensados.</div>
+        `;
+    }
+
+    const transfers = summary.settlements.map((move) => {
+        const from = context.friends.find((friend) => friend.id === move.fromFriendId);
+        const to = context.friends.find((friend) => friend.id === move.toFriendId);
+        return `
+            <article class="summary-card settlement-card">
+                <strong>${escapeHtml(from ? from.name : "Participante")}</strong>
+                paga
+                <strong>${escapeHtml(formatCurrency(move.amount))}</strong>
+                a
+                <strong>${escapeHtml(to ? to.name : "Participante")}</strong>
+            </article>
+        `;
+    }).join("");
+
+    return `
+        <div class="history-detail-head">
+            <div>
+                <p class="eyebrow">Liquidacion</p>
+                <h3>Reparto recomendado</h3>
+            </div>
+        </div>
+        <div class="expenses-transfers">${transfers}</div>
+    `;
+}
+
+function buildExpensesNotice(summary) {
+    if (!summary.totalAdults) {
+        return "Confirma participantes y cuantos adultos representa cada uno para calcular la cuota.";
+    }
+    if (!summary.totalPaid) {
+        return "Todavia no hay pagos registrados. Puedes anadir lo que ha pagado cada persona.";
+    }
+    if (summary.planAdults && summary.planAdults !== summary.totalAdults) {
+        return `El plan tiene ${summary.planAdults} adultos, pero en gastos has confirmado ${summary.totalAdults}. Ajustalo para cuadrar mejor el reparto.`;
+    }
+    return "";
+}
+
 function renderArchivedPlans() {
     if (!elements.archivedPlansList || !elements.archivedPlanDetail) {
         return;
@@ -718,6 +991,7 @@ function renderArchivedPlans() {
                 Comprados: ${escapeHtml(String(selected.completedItems || 0))}<br>
                 Total items: ${escapeHtml(String(selected.items.length || 0))}<br>
                 Mensajes: ${escapeHtml(String(selected.messages.length || 0))}<br>
+                Gastos registrados: ${escapeHtml(formatCurrency(buildExpenseSummary(selected, getExpenseEntriesForContext(selected)).totalPaid))}<br>
             </article>
         </div>
         <div class="history-chat">
@@ -1103,6 +1377,43 @@ function renderInstallButton() {
     elements.installAppButton.classList.toggle("hidden", !uiState.deferredInstallPrompt);
 }
 
+async function updateExpenseEntry(friendId, patch) {
+    if (!friendId || !ensurePlanEditable("editar gastos")) {
+        return;
+    }
+
+    const current = getExpenseEntry(friendId) || normalizeExpenseEntry({
+        friendId,
+        included: true,
+        adultsCount: "1",
+        paid: "",
+        updatedAt: ""
+    });
+
+    const next = normalizeExpenseEntry({
+        ...current,
+        ...patch,
+        adultsCount: sanitizeAdultsCount(patch.adultsCount ?? current.adultsCount),
+        paid: sanitizeMoney(patch.paid ?? current.paid),
+        updatedAt: nowIso()
+    });
+
+    if (!next.included) {
+        next.adultsCount = "0";
+    }
+
+    state.expenses = state.expenses
+        .filter((entry) => entry.friendId !== friendId)
+        .concat(next);
+
+    persistAndRender();
+    await syncGroup("updated expenses");
+}
+
+function getExpenseEntry(friendId) {
+    return state.expenses.find((entry) => entry.friendId === friendId) || null;
+}
+
 async function updateItemOwner(itemId, ownerId) {
     if (!ensurePlanEditable("reasignar compras")) {
         return;
@@ -1326,6 +1637,7 @@ async function syncGroup(reason) {
                 plan: mergedGroup.plan,
                 archived_plans: mergedGroup.archivedPlans,
                 friends: mergedGroup.friends,
+                expenses: mergedGroup.expenses,
                 items: mergedGroup.items,
                 messages: mergedGroup.messages,
                 updated_by: state.clientId,
@@ -1523,6 +1835,7 @@ function applyGroupRow(row) {
     state.plan = normalizedRow.plan;
     state.archivedPlans = normalizedRow.archivedPlans;
     state.friends = normalizedRow.friends;
+    state.expenses = normalizedRow.expenses;
     state.items = normalizedRow.items;
     state.messages = normalizedRow.messages;
 
@@ -1544,6 +1857,7 @@ function buildGroupPayload() {
         plan: normalizePlan(state.plan),
         archivedPlans: state.archivedPlans.map(normalizeArchivedPlan),
         friends: state.friends.map(normalizeFriend),
+        expenses: state.expenses.map(normalizeExpenseEntry),
         items: state.items.map(normalizeItem),
         messages: state.messages.map(normalizeMessage)
     };
@@ -1556,6 +1870,7 @@ function rowToGroup(row) {
         plan: normalized.plan,
         archivedPlans: normalized.archivedPlans,
         friends: normalized.friends,
+        expenses: normalized.expenses,
         items: normalized.items,
         messages: normalized.messages
     };
@@ -1655,6 +1970,7 @@ function normalizeClientState(candidate) {
         plan: normalizePlan(candidate.plan || {}),
         archivedPlans: Array.isArray(candidate.archivedPlans) ? candidate.archivedPlans.map(normalizeArchivedPlan) : [],
         friends: Array.isArray(candidate.friends) ? candidate.friends.map(normalizeFriend) : [],
+        expenses: Array.isArray(candidate.expenses) ? candidate.expenses.map(normalizeExpenseEntry) : [],
         items: Array.isArray(candidate.items) ? candidate.items.map(normalizeItem) : [],
         messages: Array.isArray(candidate.messages) ? candidate.messages.map(normalizeMessage) : []
     };
@@ -1669,6 +1985,7 @@ function normalizeGroupRow(row) {
             ? dedupeArchivedPlans((source.archivedPlans || source.archived_plans).map(normalizeArchivedPlan))
             : [],
         friends: Array.isArray(source.friends) ? dedupeFriends(source.friends.map(normalizeFriend)) : [],
+        expenses: Array.isArray(source.expenses) ? dedupeExpenseEntries(source.expenses.map(normalizeExpenseEntry)) : [],
         items: Array.isArray(source.items) ? dedupeById(source.items.map(normalizeItem)) : [],
         messages: Array.isArray(source.messages) ? dedupeById(source.messages.map(normalizeMessage)) : []
     };
@@ -1695,6 +2012,7 @@ function blankGroupPayload(groupCode) {
         plan: blankPlan(),
         archivedPlans: [],
         friends: [],
+        expenses: [],
         items: [],
         messages: []
     };
@@ -1816,6 +2134,7 @@ function normalizeArchivedPlan(entry) {
         messageCount: Number(entry.messageCount || 0),
         plan: normalizePlan(entry.plan || {}),
         friends: Array.isArray(entry.friends) ? entry.friends.map(normalizeFriend) : [],
+        expenses: Array.isArray(entry.expenses) ? entry.expenses.map(normalizeExpenseEntry) : [],
         items: Array.isArray(entry.items) ? entry.items.map(normalizeItem) : [],
         messages: Array.isArray(entry.messages) ? entry.messages.map(normalizeMessage) : []
     };
@@ -1827,6 +2146,16 @@ function normalizeFriend(friend) {
         deviceId: String(friend.deviceId || ""),
         name: String(friend.name || "Amigo"),
         updatedAt: String(friend.updatedAt || "")
+    };
+}
+
+function normalizeExpenseEntry(entry) {
+    return {
+        friendId: String(entry.friendId || ""),
+        included: Boolean(entry.included),
+        adultsCount: String(entry.adultsCount || (entry.included ? "1" : "0")),
+        paid: String(entry.paid || ""),
+        updatedAt: String(entry.updatedAt || "")
     };
 }
 
@@ -1889,12 +2218,25 @@ function dedupeArchivedPlans(records) {
     return Array.from(map.values()).sort((left, right) => String(right.archivedAt).localeCompare(String(left.archivedAt)));
 }
 
+function dedupeExpenseEntries(records) {
+    const map = new Map();
+    records.forEach((record) => {
+        if (!record.friendId) return;
+        const current = map.get(record.friendId);
+        if (!current || String(record.updatedAt) >= String(current.updatedAt)) {
+            map.set(record.friendId, record);
+        }
+    });
+    return Array.from(map.values());
+}
+
 function mergeGroupData(localGroup, remoteGroup) {
     return {
         groupCode: localGroup.groupCode || remoteGroup.groupCode || "",
         plan: mergeByUpdatedAt(normalizePlan(localGroup.plan), normalizePlan(remoteGroup.plan)),
         archivedPlans: dedupeArchivedPlans([].concat(remoteGroup.archivedPlans || [], localGroup.archivedPlans || []).map(normalizeArchivedPlan)),
         friends: dedupeFriends([].concat(remoteGroup.friends || [], localGroup.friends || [])),
+        expenses: dedupeExpenseEntries([].concat(remoteGroup.expenses || [], localGroup.expenses || []).map(normalizeExpenseEntry)),
         items: mergeRecordCollections(remoteGroup.items || [], localGroup.items || [], normalizeItem),
         messages: mergeRecordCollections(remoteGroup.messages || [], localGroup.messages || [], normalizeMessage)
     };
@@ -1928,6 +2270,7 @@ async function maybeArchiveExpiredPlan() {
 
         state.archivedPlans.unshift(buildArchivedPlanSnapshot(archivedAt));
         state.plan = normalizePlan({ ...blankPlan(), updatedAt: archivedAt });
+        state.expenses = [];
         state.items = archivedItems.map((item) => normalizeItem({
             ...item,
             deletedAt: item.deletedAt || archivedAt,
@@ -1951,6 +2294,7 @@ async function maybeArchiveExpiredPlan() {
 }
 
 function buildArchivedPlanSnapshot(archivedAt) {
+    const expenses = state.expenses.map(normalizeExpenseEntry);
     const items = state.items.map(normalizeItem);
     const messages = state.messages.map(normalizeMessage);
 
@@ -1965,6 +2309,7 @@ function buildArchivedPlanSnapshot(archivedAt) {
         messageCount: messages.filter((message) => !message.deletedAt).length,
         plan: normalizePlan({ ...state.plan, archivedAt, updatedAt: archivedAt }),
         friends: state.friends.map(normalizeFriend),
+        expenses,
         items,
         messages
     });
@@ -1998,6 +2343,47 @@ function hasDatePassed(dateString) {
     const current = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
     const target = new Date(`${dateString}T00:00:00Z`);
     return target < current;
+}
+
+function parseInteger(value) {
+    const parsed = Number.parseInt(String(value || "").trim(), 10);
+    return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function parseMoney(value) {
+    const normalized = String(value || "").trim().replace(",", ".");
+    const parsed = Number.parseFloat(normalized);
+    return Number.isFinite(parsed) ? roundCurrency(parsed) : 0;
+}
+
+function sanitizeAdultsCount(value) {
+    return String(clamp(parseInteger(value), 0, 999));
+}
+
+function sanitizeMoney(value) {
+    const amount = parseMoney(value);
+    return amount ? amount.toFixed(2) : "";
+}
+
+function roundCurrency(value) {
+    return Math.round((Number(value) || 0) * 100) / 100;
+}
+
+function formatCurrency(value) {
+    return new Intl.NumberFormat("es-ES", {
+        style: "currency",
+        currency: "EUR",
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    }).format(roundCurrency(value));
+}
+
+function formatSignedCurrency(value) {
+    const amount = roundCurrency(value);
+    if (Math.abs(amount) < 0.005) {
+        return formatCurrency(0);
+    }
+    return `${amount > 0 ? "+" : "-"}${formatCurrency(Math.abs(amount))}`;
 }
 
 function formatDate(dateString) {

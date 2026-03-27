@@ -26,6 +26,8 @@ def blank_group(group_code: str) -> dict:
         "groupCode": group_code,
         "plan": {
             "date": "",
+            "responseDeadlineEnabled": False,
+            "responseDeadline": "",
             "adults": "",
             "children": "",
             "bbqReserved": "",
@@ -36,6 +38,7 @@ def blank_group(group_code: str) -> dict:
         },
         "archivedPlans": [],
         "friends": [],
+        "expenses": [],
         "items": [],
         "messages": []
     }
@@ -147,6 +150,7 @@ def merge_group_data(existing: dict, incoming: dict) -> dict:
     plan = merge_plan(existing.get("plan") or {}, incoming.get("plan") or {})
     archived_plans = merge_archived_plans(existing.get("archivedPlans") or [], incoming.get("archivedPlans") or [])
     friends = merge_friends(existing.get("friends") or [], incoming.get("friends") or [])
+    expenses = merge_expenses(existing.get("expenses") or [], incoming.get("expenses") or [])
     items = merge_items(existing.get("items") or [], incoming.get("items") or [])
     messages = merge_messages(existing.get("messages") or [], incoming.get("messages") or [])
     return {
@@ -154,6 +158,7 @@ def merge_group_data(existing: dict, incoming: dict) -> dict:
         "plan": plan,
         "archivedPlans": archived_plans,
         "friends": friends,
+        "expenses": expenses,
         "items": items,
         "messages": messages
     }
@@ -165,6 +170,8 @@ def merge_plan(existing: dict, incoming: dict) -> dict:
     chosen = incoming if incoming_time >= existing_time else existing
     merged = deepcopy(chosen)
     merged.setdefault("date", "")
+    merged.setdefault("responseDeadlineEnabled", False)
+    merged.setdefault("responseDeadline", "")
     merged.setdefault("adults", "")
     merged.setdefault("children", "")
     merged.setdefault("bbqReserved", "")
@@ -220,6 +227,25 @@ def merge_items(existing: list[dict], incoming: list[dict]) -> list[dict]:
             }
 
     return sorted(merged.values(), key=lambda item: item.get("updatedAt", ""), reverse=True)
+
+
+def merge_expenses(existing: list[dict], incoming: list[dict]) -> list[dict]:
+    merged: dict[str, dict] = {}
+    for entry in existing + incoming:
+        friend_id = entry.get("friendId")
+        if not friend_id:
+            continue
+        previous = merged.get(friend_id)
+        if previous is None or (entry.get("updatedAt") or "") >= (previous.get("updatedAt") or ""):
+            merged[friend_id] = {
+                "friendId": friend_id,
+                "included": bool(entry.get("included")),
+                "adultsCount": str(entry.get("adultsCount", "0")),
+                "paid": str(entry.get("paid", "")),
+                "updatedAt": entry.get("updatedAt", "")
+            }
+
+    return sorted(merged.values(), key=lambda item: item.get("friendId", ""))
 
 
 def merge_messages(existing: list[dict], incoming: list[dict]) -> list[dict]:

@@ -370,6 +370,66 @@ body::before {
     gap: 10px;
 }
 
+.expenses-overview {
+    margin-bottom: 14px;
+}
+
+.expenses-list {
+    display: grid;
+    gap: 10px;
+}
+
+.expense-item {
+    padding: 14px;
+}
+
+.expense-main {
+    margin-bottom: 10px;
+}
+
+.expense-fields {
+    display: grid;
+    grid-template-columns: 0.9fr 0.9fr 1fr;
+    gap: 10px;
+    align-items: end;
+}
+
+.expense-fields label span,
+.expense-toggle span {
+    color: var(--muted);
+    font-size: 0.82rem;
+}
+
+.expense-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 46px;
+    padding: 0 10px;
+    border-radius: 14px;
+    background: rgba(236, 255, 243, 0.04);
+    border: 1px solid rgba(125, 242, 170, 0.08);
+}
+
+.expense-toggle input {
+    width: 18px;
+    height: 18px;
+}
+
+.expenses-settlement {
+    margin-top: 14px;
+}
+
+.expenses-transfers {
+    display: grid;
+    gap: 10px;
+}
+
+.settlement-card {
+    margin-top: 0;
+    line-height: 1.5;
+}
+
 .fab-button {
     min-width: 44px;
     min-height: 44px;
@@ -1146,7 +1206,8 @@ textarea {
     .add-item-grid,
     .setup-grid,
     .overview-grid,
-    .history-detail-grid {
+    .history-detail-grid,
+    .expense-fields {
         grid-template-columns: 1fr;
     }
 

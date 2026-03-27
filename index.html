@@ -31,6 +31,7 @@
                 <button class="app-nav-link is-active" type="button" data-view="group">Inicio</button>
                 <button class="app-nav-link" type="button" data-view="plan">Plan</button>
                 <button class="app-nav-link" type="button" data-view="shopping">Compra</button>
+                <button class="app-nav-link" type="button" data-view="expenses">Gastos</button>
                 <button class="app-nav-link" type="button" data-view="chat">Chat</button>
                 <button class="app-nav-link" type="button" data-view="summary">Resumen</button>
             </nav>
@@ -208,6 +209,25 @@
                     </div>
                 </div>
                 <div class="assignments-grid" id="assignmentsGrid"></div>
+            </section>
+
+            <section class="panel gated-panel" id="expensesSection" aria-labelledby="expensesHeading" data-requires-group="true">
+                <div class="panel-lock">
+                    <strong>Primero entra al grupo</strong>
+                    <span>Confirma quienes participan, cuanto representa cada uno y lo que ha pagado cada persona.</span>
+                </div>
+                <div class="panel-head split">
+                    <div>
+                        <p class="eyebrow">Gastos</p>
+                        <h2 id="expensesHeading">Reparto de gastos</h2>
+                    </div>
+                    <div class="total-badge" id="expensesBadge">0 EUR</div>
+                </div>
+
+                <div class="overview-grid expenses-overview" id="expensesOverview"></div>
+                <div class="overview-note hidden-view" id="expensesNotice"></div>
+                <div class="expenses-list" id="expensesList"></div>
+                <div class="history-detail expenses-settlement" id="expensesSettlement"></div>
             </section>
 
             <section class="panel chat-panel gated-panel" id="chatSection" aria-labelledby="chatHeading" data-requires-group="true">
